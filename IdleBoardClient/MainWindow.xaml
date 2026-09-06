@@ -1,12 +1,44 @@
-﻿<Window x:Class="IdleBoardClient.MainWindow"
+﻿<Window x:Class="SseWpfApp.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:IdleBoardClient"
-        mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800">
-    <Grid>
+        Title="SSE Canlı Resim Akışı" Height="500" Width="700"
+        Background="#1E1E1E">
 
+    <Grid Margin="15">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Üst Kontrol Paneli -->
+        <StackPanel Orientation="Horizontal" Grid.Row="0" Margin="0,0,0,15">
+            <Button Name="btnBaslat" Content="Canlı Akışı Başlat" 
+                    Click="btnBaslat_Click" 
+                    Padding="15,8" 
+                    Background="#007ACC" Foreground="White" 
+                    BorderThickness="0" FontWeight="Bold"/>
+
+            <TextBlock Name="txtDurum" Text="Durum: Bağlı Değil" 
+                       Foreground="#AAAAAA" VerticalAlignment="Center" 
+                       Margin="15,0,0,0" FontSize="13"/>
+        </StackPanel>
+
+        <!-- Ana İçerik: Sol Taraf Resim, Sağ Taraf Log -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*"/>
+                <ColumnDefinition Width="1*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Gelen Resim -->
+            <Border Grid.Column="0" Background="#252526" BorderBrush="#3F3F46" BorderThickness="1" Margin="0,0,10,0">
+                <Image Name="imgCanli" Stretch="Uniform" Margin="10"/>
+            </Border>
+
+            <!-- Log Ekranı -->
+            <ListBox Name="listBoxLog" Grid.Column="1" 
+                     Background="#252526" Foreground="#DCDCDC" 
+                     BorderBrush="#3F3F46" FontSize="12"/>
+        </Grid>
     </Grid>
 </Window>
