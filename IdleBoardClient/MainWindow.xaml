@@ -15,15 +15,13 @@
 
         <!-- Üst Kontrol Paneli -->
         <StackPanel Orientation="Horizontal" Grid.Row="0" Margin="0,0,0,15">
-            <Button Name="btnBaslat" Content="Canlı Akışı Başlat" 
-                    Click="btnBaslat_Click" 
-                    Padding="15,8" 
-                    Background="#007ACC" Foreground="White" 
-                    BorderThickness="0" FontWeight="Bold"/>
+            <TextBlock Name="txtDurum" Text="Durum: Başlatılıyor..." 
+               Foreground="#AAAAAA" VerticalAlignment="Center" 
+               FontSize="13"/>
 
-            <TextBlock Name="txtDurum" Text="Durum: Bağlı Değil" 
-                       Foreground="#AAAAAA" VerticalAlignment="Center" 
-                       Margin="15,0,0,0" FontSize="13"/>
+            <TextBlock Text="(Çıkmak için mouse'u hareket ettirin)" 
+               Foreground="#666666" VerticalAlignment="Center" 
+               Margin="20,0,0,0" FontSize="12"/>
         </StackPanel>
 
         <!-- Ana İçerik: Sol Taraf Resim, Sağ Taraf Log -->

@@ -11,25 +11,29 @@ namespace SseWpfApp
     public partial class MainWindow : Window
     {
         private const string ServerUrl = "http://localhost:3000/events";
-        
-        // Mouse başlangıç pozisyonunu ve takibini yapacak değişkenler
+
+        // Mouse başlangıç pozisyonu ve duyarlılık eşiği
         private Point? _baslangicMousePozisyonu = null;
-        private const double HareketeDuyarlilikEsigi = 20; // Kaç piksel hareket edince kapansın?
+        private const double HareketeDuyarlilikEsigi = 20; // 20 piksel hareket kapatır
 
         public MainWindow()
         {
             InitializeComponent();
 
-            // Mouse hareketlerini pencere seviyesinde dinliyoruz
+            // Pencere yüklendiğinde otomatik bağlanması için Loaded olayına bağlıyoruz
+            this.Loaded += MainWindow_Loaded;
+
+            // Mouse hareketlerini dinliyoruz
             this.PreviewMouseMove += MainWindow_PreviewMouseMove;
         }
 
-        private void btnBaslat_Click(object sender, RoutedEventArgs e)
+        // Pencere ekrana geldiği anda otomatik çalışır
+        private void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
-            btnBaslat.IsEnabled = false;
-            txtDurum.Text = "Durum: Sunucuya bağlanılıyor...";
+            txtDurum.Text = "Durum: Sunucuya otomatik bağlanılıyor...";
             txtDurum.Foreground = System.Windows.Media.Brushes.Orange;
 
+            // Sunucuyu dinleme sürecini doğrudan başlatıyoruz
             Task.Run(async () => await StartSseListenerAsync());
         }
 
@@ -61,7 +65,6 @@ namespace SseWpfApp
                         {
                             string jsonString = line.Substring(6);
 
-                            // JSON Verisini ayrıştırıyoruz
                             using var doc = JsonDocument.Parse(jsonString);
                             var root = doc.RootElement;
 
@@ -69,7 +72,6 @@ namespace SseWpfApp
                             string mesaj = root.GetProperty("mesaj").GetString();
                             string base64Image = root.GetProperty("resimData").GetString();
 
-                            // Resmi ekranda göster
                             ResmiGuncelle(base64Image);
                             EkranaYazdir($"{zaman} - {mesaj}");
                         }
@@ -84,7 +86,25 @@ namespace SseWpfApp
             }
         }
 
-        // Base64 String verisini WPF Image kontrolüne basan metod
+        private void MainWindow_PreviewMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+        {
+            Point mevcutPozisyon = e.GetPosition(this);
+
+            if (!_baslangicMousePozisyonu.HasValue)
+            {
+                _baslangicMousePozisyonu = mevcutPozisyon;
+                return;
+            }
+
+            double xFarki = Math.Abs(mevcutPozisyon.X - _baslangicMousePozisyonu.Value.X);
+            double yFarki = Math.Abs(mevcutPozisyon.Y - _baslangicMousePozisyonu.Value.Y);
+
+            if (xFarki > HareketeDuyarlilikEsigi || yFarki > HareketeDuyarlilikEsigi)
+            {
+                Application.Current.Shutdown();
+            }
+        }
+
         private void ResmiGuncelle(string base64String)
         {
             Dispatcher.Invoke(() =>
@@ -96,11 +116,11 @@ namespace SseWpfApp
 
                     var bitmap = new BitmapImage();
                     bitmap.BeginInit();
-                    bitmap.CacheOption = BitmapCacheOption.OnLoad; // Hafıza sızıntısını önler
+                    bitmap.CacheOption = BitmapCacheOption.OnLoad;
                     bitmap.StreamSource = ms;
                     bitmap.EndInit();
 
-                    imgCanli.Source = bitmap; // Arayüzdeki Image kontrolüne aktar
+                    imgCanli.Source = bitmap;
                 }
                 catch (Exception ex)
                 {
@@ -125,29 +145,6 @@ namespace SseWpfApp
                 txtDurum.Text = mesaj;
                 txtDurum.Foreground = renk;
             });
-        }
-
-        private void MainWindow_PreviewMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
-        {
-            // Mevcut mouse konumunu alıyoruz
-            Point mevcutPozisyon = e.GetPosition(this);
-
-            // Başlangıç konumunu kaydediyoruz (Uygulama açılışında ilk konum)
-            if (!_baslangicMousePozisyonu.HasValue)
-            {
-                _baslangicMousePozisyonu = mevcutPozisyon;
-                return;
-            }
-
-            // İlk konum ile mevcut konum arasındaki farkı hesaplıyoruz
-            double xFarki = Math.Abs(mevcutPozisyon.X - _baslangicMousePozisyonu.Value.X);
-            double yFarki = Math.Abs(mevcutPozisyon.Y - _baslangicMousePozisyonu.Value.Y);
-
-            // Belirlenen piksel eşiğinden fazla hareket edildiyse uygulamayı kapat
-            if (xFarki > HareketeDuyarlilikEsigi || yFarki > HareketeDuyarlilikEsigi)
-            {
-                Application.Current.Shutdown();
-            }
         }
     }
 }
