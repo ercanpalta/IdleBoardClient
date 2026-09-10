@@ -11,10 +11,17 @@ namespace SseWpfApp
     public partial class MainWindow : Window
     {
         private const string ServerUrl = "http://localhost:3000/events";
+        
+        // Mouse başlangıç pozisyonunu ve takibini yapacak değişkenler
+        private Point? _baslangicMousePozisyonu = null;
+        private const double HareketeDuyarlilikEsigi = 20; // Kaç piksel hareket edince kapansın?
 
         public MainWindow()
         {
             InitializeComponent();
+
+            // Mouse hareketlerini pencere seviyesinde dinliyoruz
+            this.PreviewMouseMove += MainWindow_PreviewMouseMove;
         }
 
         private void btnBaslat_Click(object sender, RoutedEventArgs e)
@@ -118,6 +125,29 @@ namespace SseWpfApp
                 txtDurum.Text = mesaj;
                 txtDurum.Foreground = renk;
             });
+        }
+
+        private void MainWindow_PreviewMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+        {
+            // Mevcut mouse konumunu alıyoruz
+            Point mevcutPozisyon = e.GetPosition(this);
+
+            // Başlangıç konumunu kaydediyoruz (Uygulama açılışında ilk konum)
+            if (!_baslangicMousePozisyonu.HasValue)
+            {
+                _baslangicMousePozisyonu = mevcutPozisyon;
+                return;
+            }
+
+            // İlk konum ile mevcut konum arasındaki farkı hesaplıyoruz
+            double xFarki = Math.Abs(mevcutPozisyon.X - _baslangicMousePozisyonu.Value.X);
+            double yFarki = Math.Abs(mevcutPozisyon.Y - _baslangicMousePozisyonu.Value.Y);
+
+            // Belirlenen piksel eşiğinden fazla hareket edildiyse uygulamayı kapat
+            if (xFarki > HareketeDuyarlilikEsigi || yFarki > HareketeDuyarlilikEsigi)
+            {
+                Application.Current.Shutdown();
+            }
         }
     }
 }
