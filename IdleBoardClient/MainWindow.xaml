@@ -13,16 +13,6 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- Üst Kontrol Paneli -->
-        <StackPanel Orientation="Horizontal" Grid.Row="0" Margin="0,0,0,15">
-            <TextBlock Name="txtDurum" Text="Durum: Başlatılıyor..." 
-               Foreground="#AAAAAA" VerticalAlignment="Center" 
-               FontSize="13"/>
-
-            <TextBlock Text="(Çıkmak için mouse'u hareket ettirin)" 
-               Foreground="#666666" VerticalAlignment="Center" 
-               Margin="20,0,0,0" FontSize="12"/>
-        </StackPanel>
 
         <!-- Ana İçerik: Sol Taraf Resim, Sağ Taraf Log -->
         <Grid Grid.Row="1">

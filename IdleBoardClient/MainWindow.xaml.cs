@@ -12,28 +12,22 @@ namespace SseWpfApp
     {
         private const string ServerUrl = "http://localhost:3000/events";
 
-        // Mouse başlangıç pozisyonu ve duyarlılık eşiği
+        // Mouse başlangıç pozisyonu ve kapatma hassasiyeti (piksel)
         private Point? _baslangicMousePozisyonu = null;
-        private const double HareketeDuyarlilikEsigi = 20; // 20 piksel hareket kapatır
+        private const double HareketeDuyarlilikEsigi = 20;
 
         public MainWindow()
         {
             InitializeComponent();
 
-            // Pencere yüklendiğinde otomatik bağlanması için Loaded olayına bağlıyoruz
+            // Pencere açıldığı an otomatik çalışacak olaylar
             this.Loaded += MainWindow_Loaded;
-
-            // Mouse hareketlerini dinliyoruz
             this.PreviewMouseMove += MainWindow_PreviewMouseMove;
         }
 
-        // Pencere ekrana geldiği anda otomatik çalışır
         private void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
-            txtDurum.Text = "Durum: Sunucuya otomatik bağlanılıyor...";
-            txtDurum.Foreground = System.Windows.Media.Brushes.Orange;
-
-            // Sunucuyu dinleme sürecini doğrudan başlatıyoruz
+            EkranaYazdir("Sunucuya bağlanılıyor...");
             Task.Run(async () => await StartSseListenerAsync());
         }
 
@@ -55,7 +49,7 @@ namespace SseWpfApp
                     using var stream = await response.Content.ReadAsStreamAsync();
                     using var reader = new StreamReader(stream);
 
-                    DurumGuncelle("Durum: Bağlantı Aktif (Resimler Alınıyor)", System.Windows.Media.Brushes.LightGreen);
+                    EkranaYazdir("Bağlantı aktif. Resimler alınıyor...");
 
                     while (!reader.EndOfStream)
                     {
@@ -79,8 +73,7 @@ namespace SseWpfApp
                 }
                 catch (Exception ex)
                 {
-                    DurumGuncelle("Durum: Bağlantı Koptu! Tekrar deneniyor...", System.Windows.Media.Brushes.IndianRed);
-                    EkranaYazdir($"[HATA] {ex.Message}");
+                    EkranaYazdir($"[HATA] {ex.Message}. 5s sonra tekrar deneniyor...");
                     await Task.Delay(5000);
                 }
             }
@@ -99,6 +92,7 @@ namespace SseWpfApp
             double xFarki = Math.Abs(mevcutPozisyon.X - _baslangicMousePozisyonu.Value.X);
             double yFarki = Math.Abs(mevcutPozisyon.Y - _baslangicMousePozisyonu.Value.Y);
 
+            // Mouse 20 piksellik eşiği aştığında uygulamayı kapat
             if (xFarki > HareketeDuyarlilikEsigi || yFarki > HareketeDuyarlilikEsigi)
             {
                 Application.Current.Shutdown();
@@ -116,7 +110,7 @@ namespace SseWpfApp
 
                     var bitmap = new BitmapImage();
                     bitmap.BeginInit();
-                    bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                    bitmap.CacheOption = BitmapCacheOption.OnLoad; // Bellek sızıntısını önler
                     bitmap.StreamSource = ms;
                     bitmap.EndInit();
 
@@ -124,7 +118,7 @@ namespace SseWpfApp
                 }
                 catch (Exception ex)
                 {
-                    EkranaYazdir($"[RESİM İŞLEME HATASI] {ex.Message}");
+                    EkranaYazdir($"[RESİM HATASI] {ex.Message}");
                 }
             });
         }
@@ -135,15 +129,6 @@ namespace SseWpfApp
             {
                 listBoxLog.Items.Add(mesaj);
                 listBoxLog.ScrollIntoView(listBoxLog.Items[listBoxLog.Items.Count - 1]);
-            });
-        }
-
-        private void DurumGuncelle(string mesaj, System.Windows.Media.Brush renk)
-        {
-            Dispatcher.Invoke(() =>
-            {
-                txtDurum.Text = mesaj;
-                txtDurum.Foreground = renk;
             });
         }
     }
