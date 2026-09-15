@@ -1,10 +1,12 @@
 ﻿using System;
 using System.IO;
 using System.Net.Http;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 
 namespace SseWpfApp
 {
@@ -12,23 +14,106 @@ namespace SseWpfApp
     {
         private const string ServerUrl = "http://localhost:3000/events";
 
-        // Mouse başlangıç pozisyonu ve kapatma hassasiyeti (piksel)
+        // Mouse takip değişkenleri
         private Point? _baslangicMousePozisyonu = null;
         private const double HareketeDuyarlilikEsigi = 20;
+
+        // Sistem Boşta Kalma (Idle) Süresi Zamanlayıcısı
+        private DispatcherTimer _idleTimer;
+        private const int IdleSuresiSaniye = 3; // 3 saniye boyunca işlem yapılmazsa açılacak
+
+        // --- Windows Win32 API (Sistem Genelindeki Klavye/Mouse Hareketini Ölçmek İçin) ---
+        [StructLayout(LayoutKind.Sequential)]
+        struct LASTINPUTINFO
+        {
+            public uint cbSize;
+            public uint dwTime;
+        }
+
+        [DllImport("user32.dll")]
+        static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);
 
         public MainWindow()
         {
             InitializeComponent();
 
-            // Pencere açıldığı an otomatik çalışacak olaylar
             this.Loaded += MainWindow_Loaded;
             this.PreviewMouseMove += MainWindow_PreviewMouseMove;
+
+            // Arka planda sistemi kontrol edecek zamanlayıcı (Her 500 ms'de bir kontrol eder)
+            _idleTimer = new DispatcherTimer();
+            _idleTimer.Interval = TimeSpan.FromMilliseconds(500);
+            _idleTimer.Tick += IdleTimer_Tick;
+            _idleTimer.Start();
         }
 
         private void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
             EkranaYazdir("Sunucuya bağlanılıyor...");
             Task.Run(async () => await StartSseListenerAsync());
+        }
+
+        // Arka planda çalışarak kullanıcı 3 saniyedir inaktif mi diye kontrol eden metod
+        private void IdleTimer_Tick(object? sender, EventArgs e)
+        {
+            uint idleSuresiMs = GetIdleTimeMs();
+
+            // Eğer kullanıcı 3 saniyeden fazla süredir mouse/klavye kullanmadıysa ve uygulama gizliyse:
+            if (idleSuresiMs >= (IdleSuresiSaniye * 1000) && !this.IsVisible)
+            {
+                UygulamayiAc();
+            }
+        }
+
+        // Windows'un son girdi süresini milisaniye cinsinden döndürür
+        private static uint GetIdleTimeMs()
+        {
+            LASTINPUTINFO lastInputInfo = new LASTINPUTINFO();
+            lastInputInfo.cbSize = (uint)Marshal.SizeOf(lastInputInfo);
+
+            if (GetLastInputInfo(ref lastInputInfo))
+            {
+                return (uint)Environment.TickCount - lastInputInfo.dwTime;
+            }
+            return 0;
+        }
+
+        private void MainWindow_PreviewMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+        {
+            // Sadece uygulama ekranda görünürken mouse hareketlerini algıla
+            if (!this.IsVisible) return;
+
+            Point mevcutPozisyon = e.GetPosition(this);
+
+            if (!_baslangicMousePozisyonu.HasValue)
+            {
+                _baslangicMousePozisyonu = mevcutPozisyon;
+                return;
+            }
+
+            double xFarki = Math.Abs(mevcutPozisyon.X - _baslangicMousePozisyonu.Value.X);
+            double yFarki = Math.Abs(mevcutPozisyon.Y - _baslangicMousePozisyonu.Value.Y);
+
+            // Mouse hareket ettiğinde uygulamayı kapatmak yerine GİZLİYORUZ
+            if (xFarki > HareketeDuyarlilikEsigi || yFarki > HareketeDuyarlilikEsigi)
+            {
+                UygulamayiGizle();
+            }
+        }
+
+        private void UygulamayiGizle()
+        {
+            _baslangicMousePozisyonu = null; // Pozisyon sıfırlanır
+            this.Hide(); // Pencere gizlenir
+        }
+
+        private void UygulamayiAc()
+        {
+            this.Show();
+            this.WindowState = WindowState.Maximized;
+            this.Topmost = true;
+            this.Activate(); // Öne getir
+            _baslangicMousePozisyonu = null; // Yeni açılış için pozisyonu sıfırla
         }
 
         private async Task StartSseListenerAsync()
@@ -51,9 +136,11 @@ namespace SseWpfApp
 
                     EkranaYazdir("Bağlantı aktif. Resimler alınıyor...");
 
-                    while (!reader.EndOfStream)
+                    // Use ReadLineAsync() and break when it returns null instead of EndOfStream
+                    while (true)
                     {
-                        var line = await reader.ReadLineAsync();
+                        var line = await reader.ReadLineAsync().ConfigureAwait(false);
+                        if (line == null) break;
 
                         if (!string.IsNullOrWhiteSpace(line) && line.StartsWith("data: "))
                         {
@@ -62,12 +149,18 @@ namespace SseWpfApp
                             using var doc = JsonDocument.Parse(jsonString);
                             var root = doc.RootElement;
 
-                            string zaman = root.GetProperty("zaman").GetString();
-                            string mesaj = root.GetProperty("mesaj").GetString();
-                            string base64Image = root.GetProperty("resimData").GetString();
+                            string? zaman = root.GetProperty("zaman").GetString();
+                            string? mesaj = root.GetProperty("mesaj").GetString();
+                            string? base64Image = root.GetProperty("resimData").GetString();
+
+                            if (string.IsNullOrEmpty(base64Image))
+                            {
+                                EkranaYazdir("[RESİM HATASI] resimData is null or empty");
+                                continue;
+                            }
 
                             ResmiGuncelle(base64Image);
-                            EkranaYazdir($"{zaman} - {mesaj}");
+                            EkranaYazdir($"{zaman ?? "?"} - {mesaj ?? string.Empty}");
                         }
                     }
                 }
@@ -79,38 +172,24 @@ namespace SseWpfApp
             }
         }
 
-        private void MainWindow_PreviewMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
-        {
-            Point mevcutPozisyon = e.GetPosition(this);
-
-            if (!_baslangicMousePozisyonu.HasValue)
-            {
-                _baslangicMousePozisyonu = mevcutPozisyon;
-                return;
-            }
-
-            double xFarki = Math.Abs(mevcutPozisyon.X - _baslangicMousePozisyonu.Value.X);
-            double yFarki = Math.Abs(mevcutPozisyon.Y - _baslangicMousePozisyonu.Value.Y);
-
-            // Mouse 20 piksellik eşiği aştığında uygulamayı kapat
-            if (xFarki > HareketeDuyarlilikEsigi || yFarki > HareketeDuyarlilikEsigi)
-            {
-                Application.Current.Shutdown();
-            }
-        }
-
-        private void ResmiGuncelle(string base64String)
+        private void ResmiGuncelle(string? base64String)
         {
             Dispatcher.Invoke(() =>
             {
                 try
                 {
+                    if (string.IsNullOrEmpty(base64String))
+                    {
+                        EkranaYazdir("[RESİM HATASI] resimData is null or empty");
+                        return;
+                    }
+
                     byte[] imageBytes = Convert.FromBase64String(base64String);
                     using var ms = new MemoryStream(imageBytes);
 
                     var bitmap = new BitmapImage();
                     bitmap.BeginInit();
-                    bitmap.CacheOption = BitmapCacheOption.OnLoad; // Bellek sızıntısını önler
+                    bitmap.CacheOption = BitmapCacheOption.OnLoad;
                     bitmap.StreamSource = ms;
                     bitmap.EndInit();
 
