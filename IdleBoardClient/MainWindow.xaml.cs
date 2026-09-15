@@ -8,6 +8,9 @@ using System.Windows;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 
+// Forms ve WPF Isim Çakışmasını Önlemek İçin Alias
+using Forms = System.Windows.Forms;
+
 namespace SseWpfApp
 {
     public partial class MainWindow : Window
@@ -15,12 +18,15 @@ namespace SseWpfApp
         private const string ServerUrl = "http://localhost:3000/events";
 
         // Mouse takip değişkenleri
-        private Point? _baslangicMousePozisyonu = null;
+        private System.Windows.Point? _baslangicMousePozisyonu = null;
         private const double HareketeDuyarlilikEsigi = 20;
 
         // Sistem Boşta Kalma (Idle) Süresi Zamanlayıcısı
         private DispatcherTimer _idleTimer;
         private const int IdleSuresiSaniye = 3; // 3 saniye boyunca işlem yapılmazsa açılacak
+
+        // System Tray Simgesi
+        private Forms.NotifyIcon _notifyIcon = null!;
 
         // --- Windows Win32 API (Sistem Genelindeki Klavye/Mouse Hareketini Ölçmek İçin) ---
         [StructLayout(LayoutKind.Sequential)]
@@ -33,9 +39,15 @@ namespace SseWpfApp
         [DllImport("user32.dll")]
         static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);
 
+
+        private bool _bildirimGosterildiMi = false;
+
         public MainWindow()
         {
             InitializeComponent();
+
+            // Tray Icon Kurulumu
+            SistemTepsiSimgesiOlustur();
 
             this.Loaded += MainWindow_Loaded;
             this.PreviewMouseMove += MainWindow_PreviewMouseMove;
@@ -45,6 +57,33 @@ namespace SseWpfApp
             _idleTimer.Interval = TimeSpan.FromMilliseconds(500);
             _idleTimer.Tick += IdleTimer_Tick;
             _idleTimer.Start();
+        }
+
+        // System Tray (Sağ Alt Simge) Yapılandırması
+        private void SistemTepsiSimgesiOlustur()
+        {
+            _notifyIcon = new Forms.NotifyIcon();
+            _notifyIcon.Icon = System.Drawing.SystemIcons.Application; // Varsayılan sistem simgesi
+            _notifyIcon.Visible = true;
+            _notifyIcon.Text = "IdleBoard";
+
+            // Sağ Tık Menüsü
+            var contextMenu = new Forms.ContextMenuStrip();
+
+            var itemGoster = new Forms.ToolStripMenuItem("Tam Ekran Göster");
+            itemGoster.Click += (s, e) => UygulamayiAc();
+
+            var itemCikis = new Forms.ToolStripMenuItem("Çıkış");
+            itemCikis.Click += (s, e) => UygulamayiTamamenKapat();
+
+            contextMenu.Items.Add(itemGoster);
+            contextMenu.Items.Add(new Forms.ToolStripSeparator());
+            contextMenu.Items.Add(itemCikis);
+
+            _notifyIcon.ContextMenuStrip = contextMenu;
+
+            // Simgeye çift tıklandığında da açılması için
+            _notifyIcon.DoubleClick += (s, e) => UygulamayiAc();
         }
 
         private void MainWindow_Loaded(object sender, RoutedEventArgs e)
@@ -83,7 +122,7 @@ namespace SseWpfApp
             // Sadece uygulama ekranda görünürken mouse hareketlerini algıla
             if (!this.IsVisible) return;
 
-            Point mevcutPozisyon = e.GetPosition(this);
+            System.Windows.Point mevcutPozisyon = e.GetPosition(this);
 
             if (!_baslangicMousePozisyonu.HasValue)
             {
@@ -103,8 +142,15 @@ namespace SseWpfApp
 
         private void UygulamayiGizle()
         {
-            _baslangicMousePozisyonu = null; // Pozisyon sıfırlanır
-            this.Hide(); // Pencere gizlenir
+            _baslangicMousePozisyonu = null;
+            this.Hide();
+
+            // Bildirim daha önce gösterilmediyse sadece ilk gizlenmede göster
+            if (!_bildirimGosterildiMi)
+            {
+                _notifyIcon.ShowBalloonTip(1500, "IdleBoard", "Uygulama tepside çalışmaya devam ediyor.", Forms.ToolTipIcon.Info);
+                _bildirimGosterildiMi = true; // Bayrağı güncelle, bir daha çalışmasın
+            }
         }
 
         private void UygulamayiAc()
@@ -114,6 +160,14 @@ namespace SseWpfApp
             this.Topmost = true;
             this.Activate(); // Öne getir
             _baslangicMousePozisyonu = null; // Yeni açılış için pozisyonu sıfırla
+        }
+
+        private void UygulamayiTamamenKapat()
+        {
+            // Tray Icon'u bellekten temizle ve kapat
+            _notifyIcon.Visible = false;
+            _notifyIcon.Dispose();
+            System.Windows.Application.Current.Shutdown();
         }
 
         private async Task StartSseListenerAsync()

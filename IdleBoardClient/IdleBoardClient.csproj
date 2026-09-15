@@ -6,6 +6,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+	<!-- System Tray için aşağıdaki satırı ekleyin -->
+	<UseWindowsForms>true</UseWindowsForms>
   </PropertyGroup>
 
 </Project>
