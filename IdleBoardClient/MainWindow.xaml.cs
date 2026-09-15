@@ -258,11 +258,8 @@ namespace SseWpfApp
 
         private void EkranaYazdir(string mesaj)
         {
-            Dispatcher.Invoke(() =>
-            {
-                listBoxLog.Items.Add(mesaj);
-                listBoxLog.ScrollIntoView(listBoxLog.Items[listBoxLog.Items.Count - 1]);
-            });
+            // Arayüzde log alanı olmadığı için metinleri Visual Studio Output penceresine yazdırıyoruz
+            System.Diagnostics.Debug.WriteLine($"[{DateTime.Now:HH:mm:ss}] {mesaj}");
         }
     }
 }

@@ -5,31 +5,13 @@
         WindowStyle="None"
         WindowState="Maximized"
         Topmost="True"
-        Background="#1E1E1E">
+        Background="#000000">
 
-    <Grid Margin="15">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-        </Grid.RowDefinitions>
-
-
-        <!-- Ana İçerik: Sol Taraf Resim, Sağ Taraf Log -->
-        <Grid Grid.Row="1">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="2*"/>
-                <ColumnDefinition Width="1*"/>
-            </Grid.ColumnDefinitions>
-
-            <!-- Gelen Resim -->
-            <Border Grid.Column="0" Background="#252526" BorderBrush="#3F3F46" BorderThickness="1" Margin="0,0,10,0">
-                <Image Name="imgCanli" Stretch="Uniform" Margin="10"/>
-            </Border>
-
-            <!-- Log Ekranı -->
-            <ListBox Name="listBoxLog" Grid.Column="1" 
-                     Background="#252526" Foreground="#DCDCDC" 
-                     BorderBrush="#3F3F46" FontSize="12"/>
-        </Grid>
+    <Grid>
+        <!-- Resim Ekranın Tamamını Kaplar -->
+        <Image Name="imgCanli" 
+               Stretch="Uniform" 
+               HorizontalAlignment="Center" 
+               VerticalAlignment="Center"/>
     </Grid>
 </Window>
