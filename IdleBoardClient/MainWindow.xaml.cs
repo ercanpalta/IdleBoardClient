@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using System.Windows.Media.Animation;
 
 // Forms ve WPF Isim Çakışmasını Önlemek İçin Alias
 using Forms = System.Windows.Forms;
@@ -241,13 +242,38 @@ namespace SseWpfApp
                     byte[] imageBytes = Convert.FromBase64String(base64String);
                     using var ms = new MemoryStream(imageBytes);
 
-                    var bitmap = new BitmapImage();
-                    bitmap.BeginInit();
-                    bitmap.CacheOption = BitmapCacheOption.OnLoad;
-                    bitmap.StreamSource = ms;
-                    bitmap.EndInit();
+                    var yeniBitmap = new BitmapImage();
+                    yeniBitmap.BeginInit();
+                    yeniBitmap.CacheOption = BitmapCacheOption.OnLoad; // Bellek sızıntısını önler
+                    yeniBitmap.StreamSource = ms;
+                    yeniBitmap.EndInit();
 
-                    imgCanli.Source = bitmap;
+                    // --- FADE-OUT (Kararma) Animasyonu ---
+                    var fadeOut = new DoubleAnimation
+                    {
+                        From = 1.0,
+                        To = 0.0,
+                        Duration = TimeSpan.FromMilliseconds(800) // 800 ms'de silikleşir
+                    };
+
+                    // Resim tamamen silikleştiğinde yeni resmi yükleyip Fade-in başlatıyoruz
+                    fadeOut.Completed += (s, e) =>
+                    {
+                        imgCanli.Source = yeniBitmap; // Yeni resmi atıyoruz
+
+                        // --- FADE-IN (Açılma) Animasyonu ---
+                        var fadeIn = new DoubleAnimation
+                        {
+                            From = 0.0,
+                            To = 1.0,
+                            Duration = TimeSpan.FromMilliseconds(1000) // 100 ms'de netleşir
+                        };
+
+                        imgCanli.BeginAnimation(System.Windows.UIElement.OpacityProperty, fadeIn);
+                    };
+
+                    // Animasyonu başlat
+                    imgCanli.BeginAnimation(System.Windows.UIElement.OpacityProperty, fadeOut);
                 }
                 catch (Exception ex)
                 {

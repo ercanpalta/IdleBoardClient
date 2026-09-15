@@ -12,6 +12,7 @@
         <Image Name="imgCanli" 
                Stretch="Uniform" 
                HorizontalAlignment="Center" 
-               VerticalAlignment="Center"/>
+               VerticalAlignment="Center"
+               Opacity="1"/>
     </Grid>
 </Window>
