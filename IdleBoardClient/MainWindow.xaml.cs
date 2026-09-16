@@ -120,7 +120,21 @@ namespace SseWpfApp
 
         private void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
-            // İlk açılışta dinleyiciyi başlatıyoruz
+            // Eğer kaydedilmiş bir URL yoksa (ilk açılış veya boş bırakılmışsa)
+            if (string.IsNullOrWhiteSpace(ServerUrl))
+            {
+                bool kayitBaşarili = IlkAcalistaUrlSor();
+
+                // Kullanıcı iptal ederse veya boş geçerse uygulamayı açma
+                if (!kayitBaşarili)
+                {
+                    System.Windows.MessageBox.Show("Sunucu adresi belirtilmediği için uygulama kapatılıyor.", "Uyarı", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    UygulamayiTamamenKapat();
+                    return;
+                }
+            }
+
+            // Geçerli URL varsa bağlantıyı başlat
             SseBaslat();
         }
 
@@ -132,6 +146,27 @@ namespace SseWpfApp
 
             var token = _sseCancellationTokenSource.Token;
             Task.Run(async () => await StartSseListenerAsync(token), token);
+        }
+
+        // İlk açılışa özel Ayarlar Penceresi diyalog yönetimi
+        private bool IlkAcalistaUrlSor()
+        {
+            var settingsWin = new SettingsWindow("http://localhost:3000/events");
+
+            // Pencereyi öne getir
+            settingsWin.Topmost = true;
+
+            if (settingsWin.ShowDialog() == true)
+            {
+                ServerUrl = settingsWin.ServerUrl;
+
+                // Ayarlara kaydet
+                Settings.Default.ServerUrl = ServerUrl;
+                Settings.Default.Save();
+                return true;
+            }
+
+            return false;
         }
 
         // Arka planda çalışarak kullanıcı 3 saniyedir inaktif mi diye kontrol eden metod

@@ -3,7 +3,7 @@
   <Profiles />
   <Settings>
     <Setting Name="ServerUrl" Type="System.String" Scope="User">
-      <Value Profile="(Default)">http://localhost:3000/events</Value>
+      <Value Profile="(Default)" />
     </Setting>
   </Settings>
 </SettingsFile>

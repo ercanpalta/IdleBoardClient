@@ -25,7 +25,7 @@ namespace IdleBoardClient {
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("http://localhost:3000/events")]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
         public string ServerUrl {
             get {
                 return ((string)(this["ServerUrl"]));
