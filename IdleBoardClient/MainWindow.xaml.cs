@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Threading.Tasks;
+using System.Threading;
 using System.Windows;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -16,7 +17,7 @@ namespace SseWpfApp
 {
     public partial class MainWindow : Window
     {
-        private const string ServerUrl = "http://localhost:3000/events";
+        private string ServerUrl = "http://localhost:3000/events";
 
         // Mouse takip değişkenleri
         private System.Windows.Point? _baslangicMousePozisyonu = null;
@@ -42,6 +43,9 @@ namespace SseWpfApp
 
 
         private bool _bildirimGosterildiMi = false;
+
+        // Mevcut SSE bağlantısını dışarıdan iptal edebilmek için CancellationTokenSource
+        private System.Threading.CancellationTokenSource? _sseCancellationTokenSource;
 
         public MainWindow()
         {
@@ -74,10 +78,15 @@ namespace SseWpfApp
             var itemGoster = new Forms.ToolStripMenuItem("Tam Ekran Göster");
             itemGoster.Click += (s, e) => UygulamayiAc();
 
+            // AYARLAR MENÜSÜ
+            var itemAyarlar = new Forms.ToolStripMenuItem("Ayarlar");
+            itemAyarlar.Click += (s, e) => AyarlarPenceresiniAc();
+
             var itemCikis = new Forms.ToolStripMenuItem("Çıkış");
             itemCikis.Click += (s, e) => UygulamayiTamamenKapat();
 
             contextMenu.Items.Add(itemGoster);
+            contextMenu.Items.Add(itemAyarlar);
             contextMenu.Items.Add(new Forms.ToolStripSeparator());
             contextMenu.Items.Add(itemCikis);
 
@@ -87,10 +96,35 @@ namespace SseWpfApp
             _notifyIcon.DoubleClick += (s, e) => UygulamayiAc();
         }
 
+        private void AyarlarPenceresiniAc()
+        {
+            var settingsWin = new SettingsWindow(ServerUrl);
+
+            if (settingsWin.ShowDialog() == true)
+            {
+                ServerUrl = settingsWin.ServerUrl;
+
+                // Eski bağlantıyı koparıp yeni URL ile otomatik olarak tekrar bağlan
+                SseBaslat();
+
+                System.Windows.MessageBox.Show("Sunucu adresi güncellendi. Yeni adrese bağlanılıyor...", "Bilgi", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
+
         private void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
-            EkranaYazdir("Sunucuya bağlanılıyor...");
-            Task.Run(async () => await StartSseListenerAsync());
+            // İlk açılışta dinleyiciyi başlatıyoruz
+            SseBaslat();
+        }
+
+        private void SseBaslat()
+        {
+            // Varsa eski iptal jetonunu temizle ve yenisini oluştur
+            _sseCancellationTokenSource?.Cancel();
+            _sseCancellationTokenSource = new CancellationTokenSource();
+
+            var token = _sseCancellationTokenSource.Token;
+            Task.Run(async () => await StartSseListenerAsync(token), token);
         }
 
         // Arka planda çalışarak kullanıcı 3 saniyedir inaktif mi diye kontrol eden metod
@@ -171,9 +205,9 @@ namespace SseWpfApp
             System.Windows.Application.Current.Shutdown();
         }
 
-        private async Task StartSseListenerAsync()
+        private async Task StartSseListenerAsync(CancellationToken cancellationToken)
         {
-            while (true)
+            while (!cancellationToken.IsCancellationRequested)
             {
                 try
                 {
@@ -183,19 +217,20 @@ namespace SseWpfApp
                     using var request = new HttpRequestMessage(HttpMethod.Get, ServerUrl);
                     request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("text/event-stream"));
 
-                    using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+                    using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
                     response.EnsureSuccessStatusCode();
 
-                    using var stream = await response.Content.ReadAsStreamAsync();
+                    using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
                     using var reader = new StreamReader(stream);
 
-                    EkranaYazdir("Bağlantı aktif. Resimler alınıyor...");
+                    EkranaYazdir($"[{ServerUrl}] adresine bağlantı aktif. Resimler alınıyor...");
 
-                    // Use ReadLineAsync() and break when it returns null instead of EndOfStream
-                    while (true)
+                    // Read lines asynchronously until the stream ends or cancellation is requested
+                    while (!cancellationToken.IsCancellationRequested)
                     {
-                        var line = await reader.ReadLineAsync().ConfigureAwait(false);
-                        if (line == null) break;
+                        var line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
+                        if (line == null) // end of stream
+                            break;
 
                         if (!string.IsNullOrWhiteSpace(line) && line.StartsWith("data: "))
                         {
@@ -219,10 +254,18 @@ namespace SseWpfApp
                         }
                     }
                 }
+                catch (OperationCanceledException)
+                {
+                    // URL değiştiğinde veya bağlantı kasıtlı iptal edildiğinde buraya düşer
+                    EkranaYazdir("Eski SSE bağlantısı kapatıldı.");
+                    break; // Döngüden temiz bir şekilde çık
+                }
                 catch (Exception ex)
                 {
+                    if (cancellationToken.IsCancellationRequested) break;
+
                     EkranaYazdir($"[HATA] {ex.Message}. 5s sonra tekrar deneniyor...");
-                    await Task.Delay(5000);
+                    await Task.Delay(5000, cancellationToken);
                 }
             }
         }
