@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System.Threading;
+using IdleBoardClient;
 using System.Windows;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -17,7 +18,8 @@ namespace SseWpfApp
 {
     public partial class MainWindow : Window
     {
-        private string ServerUrl = "http://localhost:3000/events";
+        // Varsayılan adresi kaydedilen Settings ayarlarından çekiyoruz
+        private string ServerUrl = Settings.Default.ServerUrl;
 
         // Mouse takip değişkenleri
         private System.Windows.Point? _baslangicMousePozisyonu = null;
@@ -102,12 +104,17 @@ namespace SseWpfApp
 
             if (settingsWin.ShowDialog() == true)
             {
+                // 1. Yeni adresi değişkene ata
                 ServerUrl = settingsWin.ServerUrl;
 
-                // Eski bağlantıyı koparıp yeni URL ile otomatik olarak tekrar bağlan
+                // 2. Ayarı kalıcı olarak kaydet (Disk üzerindeki user.config dosyasına yazılır)
+                Settings.Default.ServerUrl = ServerUrl;
+                Settings.Default.Save();
+
+                // 3. Yeni bağlantıyı başlat
                 SseBaslat();
 
-                System.Windows.MessageBox.Show("Sunucu adresi güncellendi. Yeni adrese bağlanılıyor...", "Bilgi", MessageBoxButton.OK, MessageBoxImage.Information);
+                System.Windows.MessageBox.Show("Sunucu adresi kaydedildi ve yeni adrese bağlanılıyor...", "Bilgi", MessageBoxButton.OK, MessageBoxImage.Information);
             }
         }
 
