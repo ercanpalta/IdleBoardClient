@@ -427,7 +427,7 @@ namespace SseWpfApp
         private static extern bool DestroyIcon(IntPtr handle);
 
         // 16x16 piksel boyutunda dinamik renkli daire ikon oluşturur
-        private System.Drawing.Icon OlusturDurumIkoni(System.Drawing.Color renk)
+        private System.Drawing.Icon OlusturDurumIkonu(System.Drawing.Color renk)
         {
             using var bitmap = new System.Drawing.Bitmap(16, 16);
             using (var g = System.Drawing.Graphics.FromImage(bitmap))
@@ -458,19 +458,19 @@ namespace SseWpfApp
                 switch (durum)
                 {
                     case BaglantiDurumu.Bagli:
-                        _notifyIcon.Icon = OlusturDurumIkoni(Color.Green);
+                        _notifyIcon.Icon = OlusturDurumIkonu(Color.Green);
                         _notifyIcon.Text = $"Kiosk: Bağlantı Aktif\n{ServerUrl}";
                         break;
 
                     case BaglantiDurumu.Baglaniyor:
-                        _notifyIcon.Icon = OlusturDurumIkoni(Color.Orange);
+                        _notifyIcon.Icon = OlusturDurumIkonu(Color.Orange);
                         _notifyIcon.Text = string.IsNullOrWhiteSpace(mesaj)
                             ? "Kiosk: Bağlanıyor..."
                             : $"Kiosk: Bağlanıyor...\n{mesaj}";
                         break;
 
                     case BaglantiDurumu.Koptu:
-                        _notifyIcon.Icon = OlusturDurumIkoni(Color.Red);
+                        _notifyIcon.Icon = OlusturDurumIkonu(Color.Red);
                         _notifyIcon.Text = string.IsNullOrWhiteSpace(mesaj)
                             ? "Kiosk: Bağlantı Kesildi!"
                             : $"Kiosk: Hata!\n{mesaj}";
