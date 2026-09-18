@@ -347,44 +347,42 @@ namespace SseWpfApp
 
         private void ResmiGuncelle(string? base64String)
         {
-            Dispatcher.Invoke(() =>
+            // Yüksek frekanslı resim değişimlerinde UI'ı kilitlememek için BeginInvoke kullanıyoruz
+            Dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(() =>
             {
                 try
                 {
-                    if (string.IsNullOrEmpty(base64String))
-                    {
-                        EkranaYazdir("[RESİM HATASI] resimData is null or empty");
-                        return;
-                    }
+                    // 1. ImageHelper kullanarak bellek dostu, dondurulmuş (Frozen) resmi oluşturuyoruz
+                    BitmapImage? yeniBitmap = ImageHelper.Base64ToBitmapImage(base64String);
 
-                    byte[] imageBytes = Convert.FromBase64String(base64String);
-                    using var ms = new MemoryStream(imageBytes);
+                    if (yeniBitmap == null) return;
 
-                    var yeniBitmap = new BitmapImage();
-                    yeniBitmap.BeginInit();
-                    yeniBitmap.CacheOption = BitmapCacheOption.OnLoad; // Bellek sızıntısını önler
-                    yeniBitmap.StreamSource = ms;
-                    yeniBitmap.EndInit();
-
-                    // --- FADE-OUT (Kararma) Animasyonu ---
+                    // 2. FADE-OUT (Kararma) Animasyonu
                     var fadeOut = new DoubleAnimation
                     {
                         From = 1.0,
                         To = 0.0,
-                        Duration = TimeSpan.FromMilliseconds(800) // 800 ms'de silikleşir
+                        Duration = TimeSpan.FromMilliseconds(700)
                     };
 
-                    // Resim tamamen silikleştiğinde yeni resmi yükleyip Fade-in başlatıyoruz
+                    // Görsel karardığında yeni resmi yükleyip eski resmi bellekten düşürüyoruz
                     fadeOut.Completed += (s, e) =>
                     {
-                        imgCanli.Source = yeniBitmap; // Yeni resmi atıyoruz
+                        // Eski resmi bellekten temizlemek için referansı sıfırlıyoruz
+                        if (imgCanli.Source is BitmapImage)
+                        {
+                            imgCanli.Source = null;
+                        }
 
-                        // --- FADE-IN (Açılma) Animasyonu ---
+                        // Yeni dondurulmuş resmi atıyoruz
+                        imgCanli.Source = yeniBitmap;
+
+                        // 3. FADE-IN (Açılma) Animasyonu
                         var fadeIn = new DoubleAnimation
                         {
                             From = 0.0,
                             To = 1.0,
-                            Duration = TimeSpan.FromMilliseconds(1000) // 100 ms'de netleşir
+                            Duration = TimeSpan.FromMilliseconds(700)
                         };
 
                         imgCanli.BeginAnimation(System.Windows.UIElement.OpacityProperty, fadeIn);
@@ -395,9 +393,9 @@ namespace SseWpfApp
                 }
                 catch (Exception ex)
                 {
-                    EkranaYazdir($"[RESİM HATASI] {ex.Message}");
+                    EkranaYazdir($"[RESİM GÜNCELLEME HATASI] {ex.Message}");
                 }
-            });
+            }));
         }
 
         private void EkranaYazdir(string mesaj)
