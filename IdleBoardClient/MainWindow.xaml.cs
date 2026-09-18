@@ -249,12 +249,17 @@ namespace SseWpfApp
 
         private async Task StartSseListenerAsync(CancellationToken cancellationToken)
         {
+            // Yeniden bağlanma süreleri (saniye): 2s, 4s, 8s, 16s ve maksimum 30s
+            int retryDelaySeconds = 2;
+            const int maxRetryDelaySeconds = 30;
+
             while (!cancellationToken.IsCancellationRequested)
             {
                 try
                 {
                     using var client = new HttpClient();
-                    client.Timeout = TimeSpan.FromMilliseconds(-1);
+                    // SSE akışı için HttpClient zaman aşımını sınırsız yapıyoruz
+                    client.Timeout = Timeout.InfiniteTimeSpan;
 
                     using var request = new HttpRequestMessage(HttpMethod.Get, ServerUrl);
                     request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("text/event-stream"));
@@ -267,47 +272,73 @@ namespace SseWpfApp
 
                     EkranaYazdir($"[{ServerUrl}] adresine bağlantı aktif. Resimler alınıyor...");
 
-                    // Read lines asynchronously until the stream ends or cancellation is requested
-                    while (!cancellationToken.IsCancellationRequested)
+                    // Başarılı bağlantı kurulduğunda bekleme süresini varsayılana sıfırla
+                    retryDelaySeconds = 2;
+
+                    while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
                     {
-                        var line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
-                        if (line == null) // end of stream
-                            break;
+                        string? line = await reader.ReadLineAsync(cancellationToken);
 
-                        if (!string.IsNullOrWhiteSpace(line) && line.StartsWith("data: "))
+                        if (string.IsNullOrWhiteSpace(line))
+                            continue;
+
+                        // Event Stream standardına uygun "data: " satırlarını işle
+                        if (line.StartsWith("data: ", StringComparison.OrdinalIgnoreCase))
                         {
-                            string jsonString = line.Substring(6);
+                            string jsonString = line.Substring(6).Trim();
 
-                            using var doc = JsonDocument.Parse(jsonString);
-                            var root = doc.RootElement;
-
-                            string? zaman = root.GetProperty("zaman").GetString();
-                            string? mesaj = root.GetProperty("mesaj").GetString();
-                            string? base64Image = root.GetProperty("resimData").GetString();
-
-                            if (string.IsNullOrEmpty(base64Image))
+                            try
                             {
-                                EkranaYazdir("[RESİM HATASI] resimData is null or empty");
-                                continue;
-                            }
+                                using var doc = JsonDocument.Parse(jsonString);
+                                var root = doc.RootElement;
 
-                            ResmiGuncelle(base64Image);
-                            EkranaYazdir($"{zaman ?? "?"} - {mesaj ?? string.Empty}");
+                                if (root.TryGetProperty("resimData", out var resimElement))
+                                {
+                                    string base64Image = resimElement.GetString() ?? string.Empty;
+                                    if (!string.IsNullOrEmpty(base64Image))
+                                    {
+                                        ResmiGuncelle(base64Image);
+                                    }
+                                }
+                            }
+                            catch (JsonException ex)
+                            {
+                                EkranaYazdir($"[JSON PARSE HATASI] {ex.Message}");
+                            }
                         }
                     }
                 }
                 catch (OperationCanceledException)
                 {
-                    // URL değiştiğinde veya bağlantı kasıtlı iptal edildiğinde buraya düşer
-                    EkranaYazdir("Eski SSE bağlantısı kapatıldı.");
-                    break; // Döngüden temiz bir şekilde çık
+                    // İsteğe bağlı iptal (URL değişimi veya uygulama kapanışı)
+                    EkranaYazdir("SSE bağlantı döngüsü sonlandırıldı.");
+                    break;
+                }
+                catch (HttpRequestException ex)
+                {
+                    EkranaYazdir($"[AĞ HATASI] Sunucuya ulaşılamıyor: {ex.Message}");
                 }
                 catch (Exception ex)
                 {
-                    if (cancellationToken.IsCancellationRequested) break;
+                    EkranaYazdir($"[BEKLENMEYEN HATA] {ex.Message}");
+                }
 
-                    EkranaYazdir($"[HATA] {ex.Message}. 5s sonra tekrar deneniyor...");
-                    await Task.Delay(5000, cancellationToken);
+                // İptal edilmediyse ve akış koptuysa katlanarak bekle ve tekrar dene
+                if (!cancellationToken.IsCancellationRequested)
+                {
+                    EkranaYazdir($"Bağlantı koptu. {retryDelaySeconds} saniye sonra tekrar deneniyor...");
+
+                    try
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(retryDelaySeconds), cancellationToken);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
+
+                    // Bekleme süresini 2 katına çıkar (Maksimum 30 saniye)
+                    retryDelaySeconds = Math.Min(retryDelaySeconds * 2, maxRetryDelaySeconds);
                 }
             }
         }
