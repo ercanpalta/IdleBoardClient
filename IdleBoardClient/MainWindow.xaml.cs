@@ -275,9 +275,11 @@ namespace SseWpfApp
                     // Başarılı bağlantı kurulduğunda bekleme süresini varsayılana sıfırla
                     retryDelaySeconds = 2;
 
-                    while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
+                    while (!cancellationToken.IsCancellationRequested)
                     {
-                        string? line = await reader.ReadLineAsync(cancellationToken);
+                        string? line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
+                        if (line == null) // end of stream
+                            break;
 
                         if (string.IsNullOrWhiteSpace(line))
                             continue;
