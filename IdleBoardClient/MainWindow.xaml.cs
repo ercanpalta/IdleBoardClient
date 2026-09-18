@@ -5,11 +5,13 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System.Threading;
+using System.Drawing;
 using IdleBoardClient;
 using System.Windows;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using System.Windows.Media.Animation;
+using System.Windows.Interop;
 
 // Forms ve WPF Isim Çakışmasını Önlemek İçin Alias
 using Forms = System.Windows.Forms;
@@ -114,7 +116,7 @@ namespace SseWpfApp
                 // 3. Yeni bağlantıyı başlat
                 SseBaslat();
 
-                System.Windows.MessageBox.Show("Sunucu adresi kaydedildi ve yeni adrese bağlanılıyor...", "Bilgi", MessageBoxButton.OK, MessageBoxImage.Information);
+                System.Windows.MessageBox.Show("Sunucu adresı kaydedildi ve yeni adrese bağlanılıyor...", "Bilgi", MessageBoxButton.OK, MessageBoxImage.Information);
             }
         }
 
@@ -257,6 +259,9 @@ namespace SseWpfApp
             {
                 try
                 {
+                    // 1. Durum: Bağlantı Kuruluyor (Sarı İkon)
+                    DurumIconGuncelle(BaglantiDurumu.Baglaniyor, "Sunucuya istek atılıyor...");
+
                     using var client = new HttpClient();
                     // SSE akışı için HttpClient zaman aşımını sınırsız yapıyoruz
                     client.Timeout = Timeout.InfiniteTimeSpan;
@@ -271,6 +276,8 @@ namespace SseWpfApp
                     using var reader = new StreamReader(stream);
 
                     EkranaYazdir($"[{ServerUrl}] adresine bağlantı aktif. Resimler alınıyor...");
+                    // 2. Durum: Bağlantı Başarılı (Yeşil İkon)
+                    DurumIconGuncelle(BaglantiDurumu.Bagli);
 
                     // Başarılı bağlantı kurulduğunda bekleme süresini varsayılana sıfırla
                     retryDelaySeconds = 2;
@@ -318,16 +325,21 @@ namespace SseWpfApp
                 }
                 catch (HttpRequestException ex)
                 {
+                    // 3. Durum: Bağlantı Kopması / Hata (Kırmızı İkon)
+                    DurumIconGuncelle(BaglantiDurumu.Koptu, ex.Message);
                     EkranaYazdir($"[AĞ HATASI] Sunucuya ulaşılamıyor: {ex.Message}");
                 }
                 catch (Exception ex)
                 {
+                    // 3. Durum: Bağlantı Kopması / Hata (Kırmızı İkon)
+                    DurumIconGuncelle(BaglantiDurumu.Koptu, ex.Message);
                     EkranaYazdir($"[BEKLENMEYEN HATA] {ex.Message}");
                 }
 
                 // İptal edilmediyse ve akış koptuysa katlanarak bekle ve tekrar dene
                 if (!cancellationToken.IsCancellationRequested)
                 {
+                    DurumIconGuncelle(BaglantiDurumu.Baglaniyor, $"{retryDelaySeconds}sn sonra tekrar denenecek");
                     EkranaYazdir($"Bağlantı koptu. {retryDelaySeconds} saniye sonra tekrar deneniyor...");
 
                     try
@@ -402,6 +414,69 @@ namespace SseWpfApp
         {
             // Arayüzde log alanı olmadığı için metinleri Visual Studio Output penceresine yazdırıyoruz
             System.Diagnostics.Debug.WriteLine($"[{DateTime.Now:HH:mm:ss}] {mesaj}");
+        }
+
+        public enum BaglantiDurumu
+        {
+            Bagli,      // Yeşil
+            Baglaniyor, // Sarı / Turuncu
+            Koptu       // Kırmızı
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Auto)]
+        private static extern bool DestroyIcon(IntPtr handle);
+
+        // 16x16 piksel boyutunda dinamik renkli daire ikon oluşturur
+        private System.Drawing.Icon OlusturDurumIkoni(System.Drawing.Color renk)
+        {
+            using var bitmap = new System.Drawing.Bitmap(16, 16);
+            using (var g = System.Drawing.Graphics.FromImage(bitmap))
+            {
+                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                using var brush = new System.Drawing.SolidBrush(renk);
+                g.FillEllipse(brush, 2, 2, 12, 12);
+            }
+
+            IntPtr hIcon = bitmap.GetHicon();
+            // Handle'dan ikonu oluşturup Clone ile tam bağımsız nesne haline getiriyoruz
+            using var tempIcon = System.Drawing.Icon.FromHandle(hIcon);
+            var finalIcon = (System.Drawing.Icon)tempIcon.Clone();
+
+            // GDI sızıntısını engellemek için handle klonlandıktan sonra serbest bırakılır
+            DestroyIcon(hIcon); 
+
+            return finalIcon;
+        }
+
+        private void DurumIconGuncelle(BaglantiDurumu durum, string mesaj = "")
+        {
+            // Arka plan thread'lerinden çağrıldığında UI thread'ine yönlendiriyoruz
+            Dispatcher.Invoke(() =>
+            {
+                if (_notifyIcon == null) return;
+
+                switch (durum)
+                {
+                    case BaglantiDurumu.Bagli:
+                        _notifyIcon.Icon = OlusturDurumIkoni(Color.Green);
+                        _notifyIcon.Text = $"Kiosk: Bağlantı Aktif\n{ServerUrl}";
+                        break;
+
+                    case BaglantiDurumu.Baglaniyor:
+                        _notifyIcon.Icon = OlusturDurumIkoni(Color.Orange);
+                        _notifyIcon.Text = string.IsNullOrWhiteSpace(mesaj)
+                            ? "Kiosk: Bağlanıyor..."
+                            : $"Kiosk: Bağlanıyor...\n{mesaj}";
+                        break;
+
+                    case BaglantiDurumu.Koptu:
+                        _notifyIcon.Icon = OlusturDurumIkoni(Color.Red);
+                        _notifyIcon.Text = string.IsNullOrWhiteSpace(mesaj)
+                            ? "Kiosk: Bağlantı Kesildi!"
+                            : $"Kiosk: Hata!\n{mesaj}";
+                        break;
+                }
+            });
         }
     }
 }
