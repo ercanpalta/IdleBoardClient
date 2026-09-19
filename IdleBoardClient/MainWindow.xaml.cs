@@ -32,7 +32,7 @@ namespace SseWpfApp
 
         // Sistem Boşta Kalma (Idle) Süresi Zamanlayıcısı
         private DispatcherTimer _idleTimer;
-        private const int IdleSuresiSaniye = 3; // 3 saniye boyunca işlem yapılmazsa açılacak
+        private const int IdleSuresiSaniye = 5; // 5 saniye boyunca işlem yapılmazsa açılacak
 
         // System Tray Simgesi
         private Forms.NotifyIcon _notifyIcon = null!;
@@ -165,7 +165,7 @@ namespace SseWpfApp
                 // 3. Yeni bağlantıyı başlat
                 SseBaslat();
 
-                System.Windows.MessageBox.Show("Sunucu adresı kaydedildi ve yeni adrese bağlanılıyor...", "Bilgi", MessageBoxButton.OK, MessageBoxImage.Information);
+                System.Windows.MessageBox.Show("Sunucu adresi kaydedildi ve yeni adrese bağlanılıyor...", "Bilgi", MessageBoxButton.OK, MessageBoxImage.Information);
             }
         }
 

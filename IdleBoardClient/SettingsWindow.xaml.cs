@@ -22,16 +22,19 @@ namespace SseWpfApp
         {
             string girilenUrl = txtServerUrl.Text.Trim();
 
-            if (!string.IsNullOrEmpty(girilenUrl))
-            {
-                ServerUrl = girilenUrl;
-                this.DialogResult = true;
-                this.Close();
-            }
-            else
+            // 1. URL Boş mu veya Geçerli bir URL formatında mı? (Sıralı Kontrol)
+            if (string.IsNullOrEmpty(girilenUrl) || !Uri.IsWellFormedUriString(girilenUrl, UriKind.Absolute))
             {
                 System.Windows.MessageBox.Show("Lütfen geçerli bir sunucu adresi girin.", "Hata", MessageBoxButton.OK, MessageBoxImage.Warning);
+
+                // Hata durumunda METODU BURADA KESİYORUZ (Aşağıya geçmesini engeller)
+                return;
             }
+
+            // 2. Yalnızca URL geçerliyse kaydetme işlemlerine geç
+            ServerUrl = girilenUrl;
+
+            Logger.LogInfo($"Sunucu adresi güncellendi: {girilenUrl}");
 
             // Auto-Start ayarını uygula
             bool autoStartDurum = ChkAutoStart.IsChecked ?? false;
