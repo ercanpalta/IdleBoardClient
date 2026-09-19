@@ -38,6 +38,9 @@ namespace IdleBoardClient
 
             Logger.LogInfo("Kiosk Uygulaması Başlatıldı.");
 
+            // İlk çalıştırma ise varsayılan olarak Windows başlangıcına ekler
+            AutoStartHelper.IlkKurulumAyariniKontrolEt();
+
             // 30 günden eski log dosyalarını temizler (isteğe bağlı gün sayısını değiştirebilirsiniz)
             Logger.CleanOldLogs(retentionDays: 30);
 

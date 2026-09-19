@@ -9,9 +9,13 @@ namespace SseWpfApp
         public SettingsWindow(string mevcutUrl)
         {
             InitializeComponent();
-        // assign property to satisfy non-nullable requirement
-        ServerUrl = mevcutUrl;
-        txtServerUrl.Text = mevcutUrl;
+
+            // Pencere açılırken Registry durumunu kontrol edip CheckBox'ı işaretliyoruz
+            ChkAutoStart.IsChecked = AutoStartHelper.OtomatikBaslatmaAktifMi();
+
+            // assign property to satisfy non-nullable requirement
+            ServerUrl = mevcutUrl;
+            txtServerUrl.Text = mevcutUrl;
         }
 
         private void btnKaydet_Click(object sender, RoutedEventArgs e)
@@ -28,6 +32,14 @@ namespace SseWpfApp
             {
                 System.Windows.MessageBox.Show("Lütfen geçerli bir sunucu adresi girin.", "Hata", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
+
+            // Auto-Start ayarını uygula
+            bool autoStartDurum = ChkAutoStart.IsChecked ?? false;
+            AutoStartHelper.OtomatikBaslatmayiAyarla(autoStartDurum);
+
+            this.DialogResult = true;
+            this.Close();
+
         }
 
         private void btnIptal_Click(object sender, RoutedEventArgs e)

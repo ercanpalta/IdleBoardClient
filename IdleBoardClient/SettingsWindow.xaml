@@ -1,13 +1,14 @@
 ﻿<Window x:Class="SseWpfApp.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Sunucu Bağlantı Ayarları" Height="190" Width="380"
+        Title="Ayarlar" Height="200" Width="380"
         WindowStartupLocation="CenterScreen"
         ResizeMode="NoResize"
         Background="#1E1E1E" Foreground="#FFFFFF">
 
     <Grid Margin="20">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
@@ -18,8 +19,17 @@
         <TextBlock Grid.Row="0" Text="Sunucu Adresi (SSE URL):" Foreground="#AAAAAA" Margin="0,0,0,5"/>
         <TextBox Name="txtServerUrl" Grid.Row="1" Padding="8,5" Background="#2D2D30" Foreground="#FFFFFF" BorderBrush="#3F3F46" Margin="0,0,0,15"/>
 
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Left">
+            <!-- Windows Başlangıcında Çalıştır CheckBox -->
+            <CheckBox x:Name="ChkAutoStart" 
+                      Content="Windows açılışında otomatik başlat" 
+                      Margin="0,0,0,0"
+                      Foreground="#FFFFFF"
+                      Cursor="Hand" />
+        </StackPanel>
+
         <!-- Butonlar -->
-        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right">
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0"> 
             <Button Name="btnKaydet" Content="Kaydet" Click="btnKaydet_Click" Width="90" Height="30" Background="#007ACC" Foreground="White" BorderThickness="0" Margin="0,0,10,0"/>
             <Button Name="btnIptal" Content="İptal" Click="btnIptal_Click" Width="90" Height="30" Background="#3F3F46" Foreground="White" BorderThickness="0"/>
         </StackPanel>
