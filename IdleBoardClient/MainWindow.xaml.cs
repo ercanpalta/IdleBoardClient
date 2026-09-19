@@ -13,6 +13,7 @@ using System.Windows.Interop;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using System.Windows.Input;
 // Forms ve WPF Isim Çakışmasını Önlemek İçin Alias
 using Forms = System.Windows.Forms;
 
@@ -71,6 +72,23 @@ namespace SseWpfApp
 
             // Saat zamanlayıcısını başlat
             StartSystemClock();
+        }
+
+        // Klavyeden herhangi bir tuşa basıldığında uygulamayı tepsiye küçültmek için PreviewKeyDown eventini kullanıyoruz
+        
+        private void Window_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+
+            // Herhangi bir klavye tuşuna basıldığında uygulamayı tepsiye küçült
+            HideToSystemTray();
+            e.Handled = true;
+
+        }
+
+        private void HideToSystemTray()
+        {
+            this.Hide();
+            Logger.LogInfo("Kullanıcı klavye etkileşimi nedeniyle uygulama tepsiye küçültüldü.");
         }
 
         private void StartSystemClock()
