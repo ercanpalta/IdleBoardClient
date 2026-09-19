@@ -333,6 +333,7 @@ namespace SseWpfApp
                 {
                     // 3. Durum: Bağlantı Kopması / Hata (Kırmızı İkon)
                     DurumIconGuncelle(BaglantiDurumu.Koptu, ex.Message);
+                    Logger.LogError("SSE Bağlantı Hatası Oluştu", ex);
                     EkranaYazdir($"[BEKLENMEYEN HATA] {ex.Message}");
                 }
 
