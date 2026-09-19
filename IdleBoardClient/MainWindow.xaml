@@ -14,5 +14,23 @@
                HorizontalAlignment="Center" 
                VerticalAlignment="Center"
                Opacity="1"/>
+
+        <!-- Alt Bilgi Şeridi (Overlay Banner) -->
+        <Border VerticalAlignment="Bottom"
+            HorizontalAlignment="Stretch"
+            Background="#CC000000"
+            Padding="20,10">
+            <Grid>
+                <!-- Sağ Kenara Hizalanmış Tarih ve Saat -->
+                <TextBlock x:Name="TxtSystemClock"
+                       Text="19 Eylül 2026, Cumartesi — 00:00:00"
+                       Foreground="White"
+                       FontSize="16"
+                       FontWeight="SemiBold"
+                       HorizontalAlignment="Right"
+                       VerticalAlignment="Center"/>
+            </Grid>
+        </Border>
+
     </Grid>
 </Window>

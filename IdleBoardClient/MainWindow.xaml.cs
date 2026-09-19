@@ -1,18 +1,18 @@
-﻿using System;
+﻿using IdleBoardClient;
+using System;
+using System.Drawing;
+using System.Globalization;
 using System.IO;
 using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Text.Json;
-using System.Threading.Tasks;
 using System.Threading;
-using System.Drawing;
-using IdleBoardClient;
+using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Interop;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
-using System.Windows.Media.Animation;
-using System.Windows.Interop;
-
 // Forms ve WPF Isim Çakışmasını Önlemek İçin Alias
 using Forms = System.Windows.Forms;
 
@@ -20,6 +20,8 @@ namespace SseWpfApp
 {
     public partial class MainWindow : Window
     {
+        private DispatcherTimer _clockTimer = null!;
+
         // Varsayılan adresi kaydedilen Settings ayarlarından çekiyoruz
         private string ServerUrl = Settings.Default.ServerUrl;
 
@@ -66,6 +68,35 @@ namespace SseWpfApp
             _idleTimer.Interval = TimeSpan.FromMilliseconds(500);
             _idleTimer.Tick += IdleTimer_Tick;
             _idleTimer.Start();
+
+            // Saat zamanlayıcısını başlat
+            StartSystemClock();
+        }
+
+        private void StartSystemClock()
+        {
+            // Anlık olarak saati bas
+            UpdateClockText();
+
+            // Her 1 saniyede bir tetiklenecek zamanlayıcı
+            _clockTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(1)
+            };
+
+            _clockTimer.Tick += (sender, e) => UpdateClockText();
+            _clockTimer.Start();
+        }
+
+        private void UpdateClockText()
+        {
+            // Sistem dilinden bağımsız olarak Türkçe uzun tarih ve saat formatı kullanıyoruz
+            var culture = new CultureInfo("tr-TR");
+
+            // Çıktı Örneği: 19 Eylül 2026, Cumartesi — 14:35:08
+            string tarihSaatMetni = DateTime.Now.ToString("dd MMMM yyyy, dddd  HH:mm:ss", culture);
+
+            TxtSystemClock.Text = tarihSaatMetni;
         }
 
         // System Tray (Sağ Alt Simge) Yapılandırması
