@@ -38,6 +38,9 @@ namespace IdleBoardClient
 
             Logger.LogInfo("Kiosk Uygulaması Başlatıldı.");
 
+            // 30 günden eski log dosyalarını temizler (isteğe bağlı gün sayısını değiştirebilirsiniz)
+            Logger.CleanOldLogs(retentionDays: 30);
+
             // Kiosk modunda ekranın ve sistemin kapanmasını engelle
             PowerManagement.UykuModunuEngelle();
         }

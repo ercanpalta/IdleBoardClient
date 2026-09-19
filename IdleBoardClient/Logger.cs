@@ -47,4 +47,42 @@ public static class Logger
             // Log yazarken hata oluşursa uygulamanın çökmesini engelliyoruz
         }
     }
+
+    /// <param name="retentionDays">Logların saklanacağı gün sayısı (Varsayılan: 30)</param>
+    public static void CleanOldLogs(int retentionDays = 30)
+    {
+        // UI Thread'i engellememek için silme işlemini arka plan Görevinde (Task) çalıştırıyoruz
+        Task.Run(() =>
+        {
+            try
+            {
+                if (!Directory.Exists(LogFolderPath)) return;
+
+                DirectoryInfo directoryInfo = new DirectoryInfo(LogFolderPath);
+                FileInfo[] files = directoryInfo.GetFiles("log_*.txt");
+
+                DateTime thresholdDate = DateTime.Now.AddDays(-retentionDays);
+
+                int deletedCount = 0;
+                foreach (FileInfo file in files)
+                {
+                    // Dosyanın son yazılma veya oluşturulma tarihi sınır tarihten eski ise sil
+                    if (file.LastWriteTime < thresholdDate)
+                    {
+                        file.Delete();
+                        deletedCount++;
+                    }
+                }
+
+                if (deletedCount > 0)
+                {
+                    LogInfo($"{deletedCount} adet eski log dosyası otomatik temizlendi ({retentionDays} günden eski).");
+                }
+            }
+            catch (Exception ex)
+            {
+                LogError("Eski log dosyaları temizlenirken hata oluştu.", ex);
+            }
+        });
+    }
 }
