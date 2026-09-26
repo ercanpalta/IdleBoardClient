@@ -34,6 +34,13 @@ namespace SseWpfApp
         private DispatcherTimer _idleTimer;
         private const int IdleSuresiSaniye = 5; // 5 saniye boyunca işlem yapılmazsa açılacak
 
+        // Web panelinden SSE ile gelen slayt süresi
+        private DispatcherTimer _slideTimer = null!;
+        private double _slideIntervalSaniye = 5;
+        private const int MinSlideIntervalSaniye = 1;
+        private const int MaxSlideIntervalSaniye = 300;
+        private int _resimAnimasyonSurum;
+
         // System Tray Simgesi
         private Forms.NotifyIcon _notifyIcon = null!;
 
@@ -69,6 +76,13 @@ namespace SseWpfApp
             _idleTimer.Interval = TimeSpan.FromMilliseconds(500);
             _idleTimer.Tick += IdleTimer_Tick;
             _idleTimer.Start();
+
+            _slideTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(5)
+            };
+            _slideTimer.Tick += SlideTimer_Tick;
+            _slideTimer.Start();
 
             // Saat zamanlayıcısını başlat
             StartSystemClock();
@@ -350,6 +364,12 @@ namespace SseWpfApp
                                 using var doc = JsonDocument.Parse(jsonString);
                                 var root = doc.RootElement;
 
+                                if (root.TryGetProperty("slideInterval", out var intervalElement)
+                                    && intervalElement.ValueKind == JsonValueKind.Number)
+                                {
+                                    UygulaSlideInterval(intervalElement.GetDouble());
+                                }
+
                                 if (root.TryGetProperty("resimData", out var resimElement))
                                 {
                                     string base64Image = resimElement.GetString() ?? string.Empty;
@@ -407,6 +427,45 @@ namespace SseWpfApp
             }
         }
 
+        private void SlideTimer_Tick(object? sender, EventArgs e)
+        {
+            // Çevrimiçiyken slaytı sunucu ilerletir. Bu zamanlayıcı panelden gelen
+            // süreyi tutar; fade süresi Interval'den türetilir (P1 offline cache aynı timer'ı kullanacak).
+        }
+
+        private void UygulaSlideInterval(double saniye)
+        {
+            if (saniye < MinSlideIntervalSaniye || saniye > MaxSlideIntervalSaniye)
+                return;
+
+            double yuvarlak = Math.Round(saniye);
+            _slideIntervalSaniye = yuvarlak;
+            var yeniInterval = TimeSpan.FromSeconds(yuvarlak);
+
+            void Uygula()
+            {
+                if (_slideTimer.Interval == yeniInterval)
+                    return;
+
+                _slideTimer.Stop();
+                _slideTimer.Interval = yeniInterval;
+                _slideTimer.Start();
+                EkranaYazdir($"Slayt süresi güncellendi: {yeniInterval.TotalSeconds:0}sn");
+            }
+
+            if (Dispatcher.CheckAccess())
+                Uygula();
+            else
+                Dispatcher.BeginInvoke(Uygula);
+        }
+
+        private TimeSpan FadeSuresiAl()
+        {
+            double yariMs = _slideIntervalSaniye * 1000 * 0.2;
+            double ms = Math.Clamp(yariMs, 120, 700);
+            return TimeSpan.FromMilliseconds(ms);
+        }
+
         private void ResmiGuncelle(string? base64String)
         {
             // Yüksek frekanslı resim değişimlerinde UI'ı kilitlememek için BeginInvoke kullanıyoruz
@@ -414,44 +473,57 @@ namespace SseWpfApp
             {
                 try
                 {
-                    // 1. ImageHelper kullanarak bellek dostu, dondurulmuş (Frozen) resmi oluşturuyoruz
                     BitmapImage? yeniBitmap = ImageHelper.Base64ToBitmapImage(base64String);
-
                     if (yeniBitmap == null) return;
 
-                    // 2. FADE-OUT (Kararma) Animasyonu
+                    int surum = ++_resimAnimasyonSurum;
+                    TimeSpan fadeSuresi = FadeSuresiAl();
+
+                    imgCanli.BeginAnimation(UIElement.OpacityProperty, null);
+
+                    if (imgCanli.Source == null)
+                    {
+                        imgCanli.Source = yeniBitmap;
+                        imgCanli.Opacity = 0;
+                        imgCanli.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation
+                        {
+                            From = 0.0,
+                            To = 1.0,
+                            Duration = fadeSuresi
+                        });
+                        return;
+                    }
+
+                    double mevcutOpaklik = imgCanli.Opacity;
+
                     var fadeOut = new DoubleAnimation
                     {
-                        From = 1.0,
+                        From = mevcutOpaklik,
                         To = 0.0,
-                        Duration = TimeSpan.FromMilliseconds(700)
+                        Duration = fadeSuresi
                     };
 
-                    // Görsel karardığında yeni resmi yükleyip eski resmi bellekten düşürüyoruz
                     fadeOut.Completed += (s, e) =>
                     {
-                        // Eski resmi bellekten temizlemek için referansı sıfırlıyoruz
-                        if (imgCanli.Source is BitmapImage)
-                        {
-                            imgCanli.Source = null;
-                        }
+                        if (surum != _resimAnimasyonSurum)
+                            return;
 
-                        // Yeni dondurulmuş resmi atıyoruz
+                        if (imgCanli.Source is BitmapImage)
+                            imgCanli.Source = null;
+
                         imgCanli.Source = yeniBitmap;
 
-                        // 3. FADE-IN (Açılma) Animasyonu
                         var fadeIn = new DoubleAnimation
                         {
                             From = 0.0,
                             To = 1.0,
-                            Duration = TimeSpan.FromMilliseconds(700)
+                            Duration = fadeSuresi
                         };
 
-                        imgCanli.BeginAnimation(System.Windows.UIElement.OpacityProperty, fadeIn);
+                        imgCanli.BeginAnimation(UIElement.OpacityProperty, fadeIn);
                     };
 
-                    // Animasyonu başlat
-                    imgCanli.BeginAnimation(System.Windows.UIElement.OpacityProperty, fadeOut);
+                    imgCanli.BeginAnimation(UIElement.OpacityProperty, fadeOut);
                 }
                 catch (Exception ex)
                 {
