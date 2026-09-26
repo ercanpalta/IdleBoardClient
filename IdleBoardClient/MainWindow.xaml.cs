@@ -1,4 +1,4 @@
-﻿using IdleBoardClient;
+using IdleBoardClient;
 using System;
 using System.Drawing;
 using System.Globalization;
@@ -40,6 +40,10 @@ namespace SseWpfApp
         private const int MinSlideIntervalSaniye = 1;
         private const int MaxSlideIntervalSaniye = 300;
         private int _resimAnimasyonSurum;
+
+        // Çevrimdışı (Offline) Önbellek ve Slayt Yönetimi
+        private volatile bool _isOffline = false;
+        private int _offlineImageIndex = 0;
 
         // System Tray Simgesi
         private Forms.NotifyIcon _notifyIcon = null!;
@@ -92,11 +96,19 @@ namespace SseWpfApp
         
         private void Window_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
         {
+            // Yönetici kısayolu: Ctrl + Shift + S doğrudan Ayarlar Penceresini açar
+            if ((System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) != 0 &&
+                (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Shift) != 0 &&
+                e.Key == System.Windows.Input.Key.S)
+            {
+                AyarlarPenceresiniAc();
+                e.Handled = true;
+                return;
+            }
 
             // Herhangi bir klavye tuşuna basıldığında uygulamayı tepsiye küçült
             HideToSystemTray();
             e.Handled = true;
-
         }
 
         private void HideToSystemTray()
@@ -197,6 +209,12 @@ namespace SseWpfApp
                     UygulamayiTamamenKapat();
                     return;
                 }
+            }
+
+            // Önbellekte görsel varsa ilk açılışta siyah ekran kalmaması için göster
+            if (ImageCacheManager.GetCachedCount() > 0)
+            {
+                SonrakiOfflineGorseliniGoster();
             }
 
             // Geçerli URL varsa bağlantıyı başlat
@@ -339,6 +357,7 @@ namespace SseWpfApp
                     using var reader = new StreamReader(stream);
 
                     EkranaYazdir($"[{ServerUrl}] adresine bağlantı aktif. Resimler alınıyor...");
+                    SetOfflineMode(false);
                     // 2. Durum: Bağlantı Başarılı (Yeşil İkon)
                     DurumIconGuncelle(BaglantiDurumu.Bagli);
 
@@ -349,7 +368,10 @@ namespace SseWpfApp
                     {
                         string? line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
                         if (line == null) // end of stream
+                        {
+                            SetOfflineMode(true);
                             break;
+                        }
 
                         if (string.IsNullOrWhiteSpace(line))
                             continue;
@@ -373,9 +395,18 @@ namespace SseWpfApp
                                 if (root.TryGetProperty("resimData", out var resimElement))
                                 {
                                     string base64Image = resimElement.GetString() ?? string.Empty;
+                                    string? dosyaAdi = null;
+                                    if (root.TryGetProperty("dosyaAdi", out var dosyaElement))
+                                    {
+                                        dosyaAdi = dosyaElement.GetString();
+                                    }
+
                                     if (!string.IsNullOrEmpty(base64Image))
                                     {
                                         ResmiGuncelle(base64Image);
+
+                                        // Alınan görseli arka planda diske önbelleğe kaydet
+                                        _ = ImageCacheManager.SaveImageAsync(dosyaAdi, base64Image);
                                     }
                                 }
                             }
@@ -395,12 +426,14 @@ namespace SseWpfApp
                 catch (HttpRequestException ex)
                 {
                     // 3. Durum: Bağlantı Kopması / Hata (Kırmızı İkon)
+                    SetOfflineMode(true);
                     DurumIconGuncelle(BaglantiDurumu.Koptu, ex.Message);
                     EkranaYazdir($"[AĞ HATASI] Sunucuya ulaşılamıyor: {ex.Message}");
                 }
                 catch (Exception ex)
                 {
                     // 3. Durum: Bağlantı Kopması / Hata (Kırmızı İkon)
+                    SetOfflineMode(true);
                     DurumIconGuncelle(BaglantiDurumu.Koptu, ex.Message);
                     Logger.LogError("SSE Bağlantı Hatası Oluştu", ex);
                     EkranaYazdir($"[BEKLENMEYEN HATA] {ex.Message}");
@@ -429,8 +462,61 @@ namespace SseWpfApp
 
         private void SlideTimer_Tick(object? sender, EventArgs e)
         {
-            // Çevrimiçiyken slaytı sunucu ilerletir. Bu zamanlayıcı panelden gelen
-            // süreyi tutar; fade süresi Interval'den türetilir (P1 offline cache aynı timer'ı kullanacak).
+            // Çevrimdışı modda slayt döngüsünü yerel zamanlayıcı yönetir
+            if (_isOffline)
+            {
+                SonrakiOfflineGorseliniGoster();
+            }
+        }
+
+        private void SetOfflineMode(bool offline)
+        {
+            if (_isOffline == offline) return;
+            _isOffline = offline;
+
+            if (_isOffline)
+            {
+                Logger.LogInfo("Ağ/Sunucu bağlantısı koptu. Çevrimdışı (offline) önbellek moduna geçildi.");
+                EkranaYazdir("[ÇEVRİMDISI MOD] Önbellekteki görsellerle slayt gösterisi devam ediyor.");
+
+                // Ekranda henüz görsel yoksa hemen ilk görseli yükle
+                Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(() =>
+                {
+                    if (imgCanli.Source == null)
+                    {
+                        SonrakiOfflineGorseliniGoster();
+                    }
+                }));
+            }
+            else
+            {
+                Logger.LogInfo("Sunucu bağlantısı yeniden sağlandı. Çevrimiçi canlı yayın devralındı.");
+                EkranaYazdir("[ÇEVRİMİÇİ MOD] Sunucu yayını aktif.");
+            }
+        }
+
+        private void SonrakiOfflineGorseliniGoster()
+        {
+            var cachedFiles = ImageCacheManager.GetCachedImageFiles();
+            if (cachedFiles.Count == 0)
+            {
+                EkranaYazdir("[ÇEVRİMDISI] Önbellekte gösterilecek kayıtlı görsel bulunamadı.");
+                return;
+            }
+
+            if (_offlineImageIndex >= cachedFiles.Count)
+            {
+                _offlineImageIndex = 0;
+            }
+
+            string filePath = cachedFiles[_offlineImageIndex];
+            _offlineImageIndex = (_offlineImageIndex + 1) % cachedFiles.Count;
+
+            var bitmap = ImageHelper.LoadBitmapFromFile(filePath);
+            if (bitmap != null)
+            {
+                ResmiGuncelle(bitmap);
+            }
         }
 
         private void UygulaSlideInterval(double saniye)
@@ -468,14 +554,22 @@ namespace SseWpfApp
 
         private void ResmiGuncelle(string? base64String)
         {
+            if (string.IsNullOrWhiteSpace(base64String)) return;
+
+            var yeniBitmap = ImageHelper.Base64ToBitmapImage(base64String);
+            if (yeniBitmap != null)
+            {
+                ResmiGuncelle(yeniBitmap);
+            }
+        }
+
+        private void ResmiGuncelle(BitmapImage yeniBitmap)
+        {
             // Yüksek frekanslı resim değişimlerinde UI'ı kilitlememek için BeginInvoke kullanıyoruz
             Dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(() =>
             {
                 try
                 {
-                    BitmapImage? yeniBitmap = ImageHelper.Base64ToBitmapImage(base64String);
-                    if (yeniBitmap == null) return;
-
                     int surum = ++_resimAnimasyonSurum;
                     TimeSpan fadeSuresi = FadeSuresiAl();
 
@@ -575,28 +669,58 @@ namespace SseWpfApp
             // Arka plan thread'lerinden çağrıldığında UI thread'ine yönlendiriyoruz
             Dispatcher.Invoke(() =>
             {
-                if (_notifyIcon == null) return;
+                int cacheCount = ImageCacheManager.GetCachedCount();
 
-                switch (durum)
+                if (_notifyIcon != null)
                 {
-                    case BaglantiDurumu.Bagli:
-                        _notifyIcon.Icon = OlusturDurumIkonu(Color.Green);
-                        _notifyIcon.Text = $"Kiosk: Bağlantı Aktif\n{ServerUrl}";
-                        break;
+                    switch (durum)
+                    {
+                        case BaglantiDurumu.Bagli:
+                            _notifyIcon.Icon = OlusturDurumIkonu(Color.Green);
+                            _notifyIcon.Text = $"Kiosk: Bağlantı Aktif\n{ServerUrl}";
+                            break;
 
-                    case BaglantiDurumu.Baglaniyor:
-                        _notifyIcon.Icon = OlusturDurumIkonu(Color.Orange);
-                        _notifyIcon.Text = string.IsNullOrWhiteSpace(mesaj)
-                            ? "Kiosk: Bağlanıyor..."
-                            : $"Kiosk: Bağlanıyor...\n{mesaj}";
-                        break;
+                        case BaglantiDurumu.Baglaniyor:
+                            _notifyIcon.Icon = OlusturDurumIkonu(Color.Orange);
+                            _notifyIcon.Text = string.IsNullOrWhiteSpace(mesaj)
+                                ? "Kiosk: Bağlanıyor..."
+                                : $"Kiosk: Bağlanıyor...\n{mesaj}";
+                            break;
 
-                    case BaglantiDurumu.Koptu:
-                        _notifyIcon.Icon = OlusturDurumIkonu(Color.Red);
-                        _notifyIcon.Text = string.IsNullOrWhiteSpace(mesaj)
-                            ? "Kiosk: Bağlantı Kesildi!"
-                            : $"Kiosk: Hata!\n{mesaj}";
-                        break;
+                        case BaglantiDurumu.Koptu:
+                            _notifyIcon.Icon = OlusturDurumIkonu(Color.Red);
+                            _notifyIcon.Text = cacheCount > 0
+                                ? $"Kiosk: Çevrimdışı ({cacheCount} Önbellek)\n{mesaj}"
+                                : $"Kiosk: Bağlantı Kesildi!\n{mesaj}";
+                            break;
+                    }
+                }
+
+                // Alt bilgi şeridindeki durum göstergesini senkronize et
+                if (DotStatus != null && TxtStatus != null)
+                {
+                    switch (durum)
+                    {
+                        case BaglantiDurumu.Bagli:
+                            DotStatus.Fill = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(16, 185, 129)); // Yeşil
+                            TxtStatus.Text = "Canlı Yayın";
+                            TxtStatus.Foreground = System.Windows.Media.Brushes.White;
+                            break;
+
+                        case BaglantiDurumu.Baglaniyor:
+                            DotStatus.Fill = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(245, 158, 11)); // Turuncu
+                            TxtStatus.Text = string.IsNullOrWhiteSpace(mesaj) ? "Bağlanıyor..." : mesaj;
+                            TxtStatus.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(226, 232, 240));
+                            break;
+
+                        case BaglantiDurumu.Koptu:
+                            DotStatus.Fill = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(239, 68, 68)); // Kırmızı
+                            TxtStatus.Text = cacheCount > 0
+                                ? $"Çevrimdışı Slayt ({cacheCount} Görsel)"
+                                : "Bağlantı Kesildi (Önbellek Yok)";
+                            TxtStatus.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(252, 165, 165));
+                            break;
+                    }
                 }
             });
         }

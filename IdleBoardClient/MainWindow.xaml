@@ -1,4 +1,4 @@
-﻿<Window x:Class="SseWpfApp.MainWindow"
+<Window x:Class="SseWpfApp.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="SSE Canlı Resim Akışı" Height="1080" Width="1920"
@@ -22,6 +22,17 @@
             Background="#CC000000"
             Padding="20,10">
             <Grid>
+                <!-- Sol Kenara Hizalanmış Canlı/Çevrimdışı Durumu -->
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center">
+                    <Ellipse x:Name="DotStatus" Width="10" Height="10" Fill="#EAB308" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="TxtStatus"
+                               Text="Bağlantı Kuruluyor..."
+                               Foreground="#E2E8F0"
+                               FontSize="14"
+                               FontWeight="Medium"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+
                 <!-- Sağ Kenara Hizalanmış Tarih ve Saat -->
                 <TextBlock x:Name="TxtSystemClock"
                        Text="19 Eylül 2026, Cumartesi — 00:00:00"

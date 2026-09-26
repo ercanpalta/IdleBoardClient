@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Windows.Media.Imaging;
 
@@ -38,5 +38,35 @@ public static class ImageHelper
 
             return bitmap;
         } // MemoryStream burada otomatik Dispose edilir ve bellek serbest kalır.
+    }
+
+    /// <summary>
+    /// Disk üzerindeki dosyayı dosya kilitlemesi (file lock) oluşturmadan belleğe yükler ve dondurur.
+    /// </summary>
+    public static BitmapImage? LoadBitmapFromFile(string? filePath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+            return null;
+
+        try
+        {
+            byte[] imageBytes = File.ReadAllBytes(filePath);
+            using (MemoryStream ms = new MemoryStream(imageBytes))
+            {
+                BitmapImage bitmap = new BitmapImage();
+                bitmap.BeginInit();
+                bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                bitmap.DecodePixelWidth = 1920;
+                bitmap.StreamSource = ms;
+                bitmap.EndInit();
+                bitmap.Freeze();
+                return bitmap;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError($"Önbellekten görsel okunamadı: {filePath}", ex);
+            return null;
+        }
     }
 }
