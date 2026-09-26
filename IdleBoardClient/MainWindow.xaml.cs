@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media.Animation;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using System.Windows.Input;
@@ -25,7 +26,6 @@ namespace SseWpfApp
 
         // Varsayılan adresi kaydedilen Settings ayarlarından çekiyoruz
         private string ServerUrl = Settings.Default.ServerUrl;
-
         // Mouse takip değişkenleri
         private System.Windows.Point? _baslangicMousePozisyonu = null;
         private const double HareketeDuyarlilikEsigi = 20;
@@ -572,29 +572,29 @@ namespace SseWpfApp
                 {
                     int surum = ++_resimAnimasyonSurum;
                     TimeSpan fadeSuresi = FadeSuresiAl();
+                    // Double the fade duration as requested
+                    TimeSpan doubleFade = TimeSpan.FromMilliseconds(fadeSuresi.TotalMilliseconds * 2);
 
+                    // Ensure no lingering animations and start from fully visible
                     imgCanli.BeginAnimation(UIElement.OpacityProperty, null);
+                    imgCanli.Opacity = 1.0;
 
                     if (imgCanli.Source == null)
                     {
+                        // No current image: directly show new image with fade-in
                         imgCanli.Source = yeniBitmap;
-                        imgCanli.Opacity = 0;
-                        imgCanli.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation
+                        imgCanli.Opacity = 0.0;
+                        imgCanli.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0.0, 1.0, doubleFade)
                         {
-                            From = 0.0,
-                            To = 1.0,
-                            Duration = fadeSuresi
+                            EasingFunction = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut }
                         });
                         return;
                     }
 
-                    double mevcutOpaklik = imgCanli.Opacity;
-
-                    var fadeOut = new DoubleAnimation
+                    // Fade-out from fully visible to fully transparent (double duration)
+                    var fadeOut = new DoubleAnimation(1.0, 0.0, doubleFade)
                     {
-                        From = mevcutOpaklik,
-                        To = 0.0,
-                        Duration = fadeSuresi
+                        EasingFunction = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseIn }
                     };
 
                     fadeOut.Completed += (s, e) =>
@@ -602,16 +602,14 @@ namespace SseWpfApp
                         if (surum != _resimAnimasyonSurum)
                             return;
 
-                        if (imgCanli.Source is BitmapImage)
-                            imgCanli.Source = null;
-
+                        // Swap image source while fully transparent
                         imgCanli.Source = yeniBitmap;
+                        imgCanli.Opacity = 0.0;
 
-                        var fadeIn = new DoubleAnimation
+                        // Fade-in the new image
+                        var fadeIn = new DoubleAnimation(0.0, 1.0, doubleFade)
                         {
-                            From = 0.0,
-                            To = 1.0,
-                            Duration = fadeSuresi
+                            EasingFunction = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut }
                         };
 
                         imgCanli.BeginAnimation(UIElement.OpacityProperty, fadeIn);
@@ -676,19 +674,19 @@ namespace SseWpfApp
                     switch (durum)
                     {
                         case BaglantiDurumu.Bagli:
-                            _notifyIcon.Icon = OlusturDurumIkonu(Color.Green);
+                            _notifyIcon.Icon = OlusturDurumIkonu(System.Drawing.Color.Green);
                             _notifyIcon.Text = $"Kiosk: Bağlantı Aktif\n{ServerUrl}";
                             break;
 
                         case BaglantiDurumu.Baglaniyor:
-                            _notifyIcon.Icon = OlusturDurumIkonu(Color.Orange);
+                            _notifyIcon.Icon = OlusturDurumIkonu(System.Drawing.Color.Orange);
                             _notifyIcon.Text = string.IsNullOrWhiteSpace(mesaj)
                                 ? "Kiosk: Bağlanıyor..."
                                 : $"Kiosk: Bağlanıyor...\n{mesaj}";
                             break;
 
                         case BaglantiDurumu.Koptu:
-                            _notifyIcon.Icon = OlusturDurumIkonu(Color.Red);
+                            _notifyIcon.Icon = OlusturDurumIkonu(System.Drawing.Color.Red);
                             _notifyIcon.Text = cacheCount > 0
                                 ? $"Kiosk: Çevrimdışı ({cacheCount} Önbellek)\n{mesaj}"
                                 : $"Kiosk: Bağlantı Kesildi!\n{mesaj}";
