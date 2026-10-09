@@ -687,9 +687,19 @@ namespace SseWpfApp
 
                         case BaglantiDurumu.Koptu:
                             _notifyIcon.Icon = OlusturDurumIkonu(System.Drawing.Color.Red);
+                            // NotifyIcon.Text has a strict max length; show only a short status here
                             _notifyIcon.Text = cacheCount > 0
-                                ? $"Kiosk: Çevrimdışı ({cacheCount} Önbellek)\n{mesaj}"
-                                : $"Kiosk: Bağlantı Kesildi!\n{mesaj}";
+                                ? $"Kiosk: Çevrimdışı ({cacheCount} Önbellek)"
+                                : "Kiosk: Bağlantı Kesildi!";
+                            // Log the full message to application logs (avoid putting long text in the tray icon)
+                            if (!string.IsNullOrWhiteSpace(mesaj))
+                            {
+                                Logger.LogError($"Bağlantı koptu: {mesaj}");
+                            }
+                            else
+                            {
+                                Logger.LogError("Bağlantı koptu.");
+                            }
                             break;
                     }
                 }
@@ -713,9 +723,11 @@ namespace SseWpfApp
 
                         case BaglantiDurumu.Koptu:
                             DotStatus.Fill = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(239, 68, 68)); // Kırmızı
+                            // Show a short, clear status when connection is lost.
+                            // Continue relying on the existing slideshow loop to keep showing cached images.
                             TxtStatus.Text = cacheCount > 0
-                                ? $"Çevrimdışı Slayt ({cacheCount} Görsel)"
-                                : "Bağlantı Kesildi (Önbellek Yok)";
+                                ? "Bağlantı koptu"
+                                : "Bağlantı koptu (Önbellek Yok)";
                             TxtStatus.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(252, 165, 165));
                             break;
                     }
