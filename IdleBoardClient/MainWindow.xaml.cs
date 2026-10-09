@@ -44,6 +44,7 @@ namespace SseWpfApp
         // Çevrimdışı (Offline) Önbellek ve Slayt Yönetimi
         private volatile bool _isOffline = false;
         private int _offlineImageIndex = 0;
+        private volatile bool _isStreamStopped = false;
 
         // System Tray Simgesi
         private Forms.NotifyIcon _notifyIcon = null!;
@@ -252,12 +253,15 @@ namespace SseWpfApp
             return false;
         }
 
-        // Arka planda çalışarak kullanıcı 3 saniyedir inaktif mi diye kontrol eden metod
+        // Arka planda çalışarak kullanıcı 5 saniyedir inaktif mi diye kontrol eden metod
         private void IdleTimer_Tick(object? sender, EventArgs e)
         {
+            // Eğer sunucudan yayını durdur komutu geldiyse sistem boşta kalsa bile uygulamayı açma
+            if (_isStreamStopped) return;
+
             uint idleSuresiMs = GetIdleTimeMs();
 
-            // Eğer kullanıcı 3 saniyeden fazla süredir mouse/klavye kullanmadıysa ve uygulama gizliyse:
+            // Eğer kullanıcı 5 saniyeden fazla süredir mouse/klavye kullanmadıysa ve uygulama gizliyse:
             if (idleSuresiMs >= (IdleSuresiSaniye * 1000) && !this.IsVisible)
             {
                 UygulamayiAc();
@@ -386,6 +390,33 @@ namespace SseWpfApp
                                 using var doc = JsonDocument.Parse(jsonString);
                                 var root = doc.RootElement;
 
+                                if (root.TryGetProperty("tip", out var tipElement))
+                                {
+                                    string tip = tipElement.GetString() ?? "";
+                                    if (tip == "stream_control")
+                                    {
+                                        if (root.TryGetProperty("action", out var actionElement))
+                                        {
+                                            string action = actionElement.GetString() ?? "";
+                                            if (action == "stop" || action == "pause")
+                                            {
+                                                SetStreamStopped(true);
+                                            }
+                                            else if (action == "start" || action == "resume")
+                                            {
+                                                SetStreamStopped(false);
+                                            }
+                                        }
+                                    }
+                                    else if (tip == "init")
+                                    {
+                                        if (root.TryGetProperty("isPaused", out var isPausedElement) && isPausedElement.GetBoolean())
+                                        {
+                                            SetStreamStopped(true);
+                                        }
+                                    }
+                                }
+
                                 if (root.TryGetProperty("slideInterval", out var intervalElement)
                                     && intervalElement.ValueKind == JsonValueKind.Number)
                                 {
@@ -462,11 +493,44 @@ namespace SseWpfApp
 
         private void SlideTimer_Tick(object? sender, EventArgs e)
         {
-            // Çevrimdışı modda slayt döngüsünü yerel zamanlayıcı yönetir
-            if (_isOffline)
+            // Çevrimdışı modda slayt döngüsünü yerel zamanlayıcı yönetir (yayın durdurulmamışsa)
+            if (_isOffline && !_isStreamStopped)
             {
                 SonrakiOfflineGorseliniGoster();
             }
+        }
+
+        private void SetStreamStopped(bool stopped)
+        {
+            if (_isStreamStopped == stopped) return;
+            _isStreamStopped = stopped;
+
+            Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(() =>
+            {
+                if (stopped)
+                {
+                    Logger.LogInfo("Sunucudan yayını durdur komutu alındı. İstemci sistem tepsisine gizlendi.");
+                    this.Hide();
+                    if (_notifyIcon != null)
+                    {
+                        _notifyIcon.Text = "Kiosk: Yayın Durduruldu";
+                    }
+                    if (TxtStatus != null)
+                    {
+                        TxtStatus.Text = "Yayın Durduruldu (Tepside)";
+                    }
+                    if (DotStatus != null)
+                    {
+                        DotStatus.Fill = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(245, 158, 11)); // Turuncu
+                    }
+                }
+                else
+                {
+                    Logger.LogInfo("Sunucudan yayını başlat komutu alındı. İstemci ekrana getirildi.");
+                    UygulamayiAc();
+                    DurumIconGuncelle(BaglantiDurumu.Bagli);
+                }
+            }));
         }
 
         private void SetOfflineMode(bool offline)
