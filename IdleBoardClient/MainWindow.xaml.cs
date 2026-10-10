@@ -45,6 +45,7 @@ namespace SseWpfApp
         private volatile bool _isOffline = false;
         private int _offlineImageIndex = 0;
         private volatile bool _isStreamStopped = false;
+        private volatile bool _hasLiveSelection = true;
 
         // System Tray Simgesi
         private Forms.NotifyIcon _notifyIcon = null!;
@@ -402,6 +403,10 @@ namespace SseWpfApp
                                             {
                                                 SetStreamStopped(true);
                                             }
+                                            else if (action == "clear")
+                                            {
+                                                ClearLiveImage();
+                                            }
                                             else if (action == "start" || action == "resume")
                                             {
                                                 SetStreamStopped(false);
@@ -434,6 +439,7 @@ namespace SseWpfApp
 
                                     if (!string.IsNullOrEmpty(base64Image))
                                     {
+                                        _hasLiveSelection = true;
                                         ResmiGuncelle(base64Image);
 
                                         // Alınan görseli arka planda diske önbelleğe kaydet
@@ -494,7 +500,7 @@ namespace SseWpfApp
         private void SlideTimer_Tick(object? sender, EventArgs e)
         {
             // Çevrimdışı modda slayt döngüsünü yerel zamanlayıcı yönetir (yayın durdurulmamışsa)
-            if (_isOffline && !_isStreamStopped)
+            if (_isOffline && !_isStreamStopped && _hasLiveSelection)
             {
                 SonrakiOfflineGorseliniGoster();
             }
@@ -533,6 +539,18 @@ namespace SseWpfApp
             }));
         }
 
+        private void ClearLiveImage()
+        {
+            _hasLiveSelection = false;
+            Dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(() =>
+            {
+                ++_resimAnimasyonSurum;
+                imgCanli.BeginAnimation(UIElement.OpacityProperty, null);
+                imgCanli.Source = null;
+                imgCanli.Opacity = 1.0;
+            }));
+        }
+
         private void SetOfflineMode(bool offline)
         {
             if (_isOffline == offline) return;
@@ -546,7 +564,7 @@ namespace SseWpfApp
                 // Ekranda henüz görsel yoksa hemen ilk görseli yükle
                 Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(() =>
                 {
-                    if (imgCanli.Source == null)
+                    if (imgCanli.Source == null && _hasLiveSelection)
                     {
                         SonrakiOfflineGorseliniGoster();
                     }
