@@ -184,18 +184,16 @@ namespace SseWpfApp
 
         private void AyarlarPenceresiniAc()
         {
-            var settingsWin = new SettingsWindow(ServerUrl, IdleSuresiSaniye);
+            var settingsWin = new SettingsWindow(ServerUrl);
 
             if (settingsWin.ShowDialog() == true)
             {
-                // 1. Yeni adresi ve süreyi değişkene ata
+                // 1. Yeni adresi değişkene ata
                 bool urlDegisti = ServerUrl != settingsWin.ServerUrl;
                 ServerUrl = settingsWin.ServerUrl;
-                IdleSuresiSaniye = settingsWin.IdleTimeSeconds;
 
-                // 2. Ayarları kalıcı olarak kaydet (Disk üzerindeki user.config dosyasına yazılır)
+                // 2. Ayarı kalıcı olarak kaydet (Disk üzerindeki user.config dosyasına yazılır)
                 Settings.Default.ServerUrl = ServerUrl;
-                Settings.Default.IdleTimeSeconds = IdleSuresiSaniye;
                 Settings.Default.Save();
 
                 // 3. Eğer URL değiştiyse yeni bağlantıyı başlat
@@ -204,7 +202,7 @@ namespace SseWpfApp
                     SseBaslat();
                 }
 
-                System.Windows.MessageBox.Show("Ayarlar başarıyla kaydedildi.", "Bilgi", MessageBoxButton.OK, MessageBoxImage.Information);
+                System.Windows.MessageBox.Show("Sunucu adresi kaydedildi.", "Bilgi", MessageBoxButton.OK, MessageBoxImage.Information);
             }
         }
 
@@ -247,7 +245,7 @@ namespace SseWpfApp
         // İlk açılışa özel Ayarlar Penceresi diyalog yönetimi
         private bool IlkAcalistaUrlSor()
         {
-            var settingsWin = new SettingsWindow("http://localhost:3000/events", IdleSuresiSaniye);
+            var settingsWin = new SettingsWindow("http://localhost:3000/events");
 
             // Pencereyi öne getir
             settingsWin.Topmost = true;
@@ -255,11 +253,9 @@ namespace SseWpfApp
             if (settingsWin.ShowDialog() == true)
             {
                 ServerUrl = settingsWin.ServerUrl;
-                IdleSuresiSaniye = settingsWin.IdleTimeSeconds;
 
                 // Ayarlara kaydet
                 Settings.Default.ServerUrl = ServerUrl;
-                Settings.Default.IdleTimeSeconds = IdleSuresiSaniye;
                 Settings.Default.Save();
                 return true;
             }
@@ -439,6 +435,12 @@ namespace SseWpfApp
                                     && intervalElement.ValueKind == JsonValueKind.Number)
                                 {
                                     UygulaSlideInterval(intervalElement.GetDouble());
+                                }
+
+                                if (root.TryGetProperty("kioskIdleTimeout", out var idleElement)
+                                    && idleElement.ValueKind == JsonValueKind.Number)
+                                {
+                                    UygulaKioskIdleTimeout(idleElement.GetInt32());
                                 }
 
                                 if (root.TryGetProperty("resimData", out var resimElement))
@@ -638,6 +640,22 @@ namespace SseWpfApp
                 Uygula();
             else
                 Dispatcher.BeginInvoke(Uygula);
+        }
+
+        private void UygulaKioskIdleTimeout(int saniye)
+        {
+            if (saniye < 1 || saniye > 86400)
+                return;
+
+            if (IdleSuresiSaniye == saniye)
+                return;
+
+            IdleSuresiSaniye = saniye;
+            Settings.Default.IdleTimeSeconds = saniye;
+            Settings.Default.Save();
+
+            Logger.LogInfo($"Sunucudan kiosk açılma süresi güncellendi: {saniye} saniye");
+            EkranaYazdir($"Kiosk açılma süresi güncellendi: {saniye}sn");
         }
 
         private TimeSpan FadeSuresiAl()
