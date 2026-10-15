@@ -32,7 +32,12 @@ namespace SseWpfApp
 
         // Sistem Boşta Kalma (Idle) Süresi Zamanlayıcısı
         private DispatcherTimer _idleTimer;
-        private const int IdleSuresiSaniye = 5; // 5 saniye boyunca işlem yapılmazsa açılacak
+        private int _idleSuresiSaniye = Settings.Default.IdleTimeSeconds > 0 ? Settings.Default.IdleTimeSeconds : 5;
+        public int IdleSuresiSaniye
+        {
+            get => _idleSuresiSaniye;
+            set => _idleSuresiSaniye = Math.Max(1, value);
+        }
 
         // Web panelinden SSE ile gelen slayt süresi
         private DispatcherTimer _slideTimer = null!;
@@ -179,21 +184,27 @@ namespace SseWpfApp
 
         private void AyarlarPenceresiniAc()
         {
-            var settingsWin = new SettingsWindow(ServerUrl);
+            var settingsWin = new SettingsWindow(ServerUrl, IdleSuresiSaniye);
 
             if (settingsWin.ShowDialog() == true)
             {
-                // 1. Yeni adresi değişkene ata
+                // 1. Yeni adresi ve süreyi değişkene ata
+                bool urlDegisti = ServerUrl != settingsWin.ServerUrl;
                 ServerUrl = settingsWin.ServerUrl;
+                IdleSuresiSaniye = settingsWin.IdleTimeSeconds;
 
-                // 2. Ayarı kalıcı olarak kaydet (Disk üzerindeki user.config dosyasına yazılır)
+                // 2. Ayarları kalıcı olarak kaydet (Disk üzerindeki user.config dosyasına yazılır)
                 Settings.Default.ServerUrl = ServerUrl;
+                Settings.Default.IdleTimeSeconds = IdleSuresiSaniye;
                 Settings.Default.Save();
 
-                // 3. Yeni bağlantıyı başlat
-                SseBaslat();
+                // 3. Eğer URL değiştiyse yeni bağlantıyı başlat
+                if (urlDegisti)
+                {
+                    SseBaslat();
+                }
 
-                System.Windows.MessageBox.Show("Sunucu adresi kaydedildi ve yeni adrese bağlanılıyor...", "Bilgi", MessageBoxButton.OK, MessageBoxImage.Information);
+                System.Windows.MessageBox.Show("Ayarlar başarıyla kaydedildi.", "Bilgi", MessageBoxButton.OK, MessageBoxImage.Information);
             }
         }
 
@@ -236,7 +247,7 @@ namespace SseWpfApp
         // İlk açılışa özel Ayarlar Penceresi diyalog yönetimi
         private bool IlkAcalistaUrlSor()
         {
-            var settingsWin = new SettingsWindow("http://localhost:3000/events");
+            var settingsWin = new SettingsWindow("http://localhost:3000/events", IdleSuresiSaniye);
 
             // Pencereyi öne getir
             settingsWin.Topmost = true;
@@ -244,9 +255,11 @@ namespace SseWpfApp
             if (settingsWin.ShowDialog() == true)
             {
                 ServerUrl = settingsWin.ServerUrl;
+                IdleSuresiSaniye = settingsWin.IdleTimeSeconds;
 
                 // Ayarlara kaydet
                 Settings.Default.ServerUrl = ServerUrl;
+                Settings.Default.IdleTimeSeconds = IdleSuresiSaniye;
                 Settings.Default.Save();
                 return true;
             }
@@ -254,7 +267,7 @@ namespace SseWpfApp
             return false;
         }
 
-        // Arka planda çalışarak kullanıcı 5 saniyedir inaktif mi diye kontrol eden metod
+        // Arka planda çalışarak kullanıcı belirlenen boşta kalma süresi boyunca inaktif mi diye kontrol eden metod
         private void IdleTimer_Tick(object? sender, EventArgs e)
         {
             // Eğer sunucudan yayını durdur komutu geldiyse sistem boşta kalsa bile uygulamayı açma
@@ -262,8 +275,8 @@ namespace SseWpfApp
 
             uint idleSuresiMs = GetIdleTimeMs();
 
-            // Eğer kullanıcı 5 saniyeden fazla süredir mouse/klavye kullanmadıysa ve uygulama gizliyse:
-            if (idleSuresiMs >= (IdleSuresiSaniye * 1000) && !this.IsVisible)
+            // Eğer kullanıcı belirlenen süreden fazla süredir mouse/klavye kullanmadıysa ve uygulama gizliyse:
+            if (idleSuresiMs >= ((uint)IdleSuresiSaniye * 1000) && !this.IsVisible)
             {
                 UygulamayiAc();
             }
