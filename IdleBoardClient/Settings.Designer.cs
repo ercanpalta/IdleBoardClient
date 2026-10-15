@@ -58,5 +58,17 @@ namespace IdleBoardClient {
                 this["IdleTimeSeconds"] = value;
             }
         }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("Uniform")]
+        public string ImageFit {
+            get {
+                return ((string)(this["ImageFit"]));
+            }
+            set {
+                this["ImageFit"] = value;
+            }
+        }
     }
 }

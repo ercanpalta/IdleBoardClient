@@ -11,5 +11,8 @@
     <Setting Name="IdleTimeSeconds" Type="System.Int32" Scope="User">
       <Value Profile="(Default)">5</Value>
     </Setting>
+    <Setting Name="ImageFit" Type="System.String" Scope="User">
+      <Value Profile="(Default)">Uniform</Value>
+    </Setting>
   </Settings>
 </SettingsFile>

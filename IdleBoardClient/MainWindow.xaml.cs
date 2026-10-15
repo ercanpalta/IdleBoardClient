@@ -75,6 +75,7 @@ namespace SseWpfApp
         public MainWindow()
         {
             InitializeComponent();
+            UygulaImageFit(Settings.Default.ImageFit);
 
             // Tray Icon Kurulumu
             SistemTepsiSimgesiOlustur();
@@ -443,6 +444,12 @@ namespace SseWpfApp
                                     UygulaKioskIdleTimeout(idleElement.GetInt32());
                                 }
 
+                                if (root.TryGetProperty("imageFit", out var fitElement)
+                                    && fitElement.ValueKind == JsonValueKind.String)
+                                {
+                                    UygulaImageFit(fitElement.GetString());
+                                }
+
                                 if (root.TryGetProperty("resimData", out var resimElement))
                                 {
                                     string base64Image = resimElement.GetString() ?? string.Empty;
@@ -656,6 +663,50 @@ namespace SseWpfApp
 
             Logger.LogInfo($"Sunucudan kiosk açılma süresi güncellendi: {saniye} saniye");
             EkranaYazdir($"Kiosk açılma süresi güncellendi: {saniye}sn");
+        }
+
+        private void UygulaImageFit(string? fitMode)
+        {
+            if (string.IsNullOrWhiteSpace(fitMode))
+                return;
+
+            Stretch stretch;
+            switch (fitMode.Trim().ToLowerInvariant())
+            {
+                case "fill":
+                    stretch = Stretch.Fill;
+                    break;
+                case "uniformtofill":
+                case "cover":
+                    stretch = Stretch.UniformToFill;
+                    break;
+                case "none":
+                    stretch = Stretch.None;
+                    break;
+                case "uniform":
+                case "contain":
+                default:
+                    stretch = Stretch.Uniform;
+                    break;
+            }
+
+            void Uygula()
+            {
+                if (imgCanli.Stretch != stretch)
+                {
+                    imgCanli.Stretch = stretch;
+                    Settings.Default.ImageFit = stretch.ToString();
+                    Settings.Default.Save();
+
+                    Logger.LogInfo($"Görsel yerleşimi güncellendi: {stretch}");
+                    EkranaYazdir($"Görsel yerleşimi: {stretch}");
+                }
+            }
+
+            if (Dispatcher.CheckAccess())
+                Uygula();
+            else
+                Dispatcher.BeginInvoke(Uygula);
         }
 
         private TimeSpan FadeSuresiAl()
