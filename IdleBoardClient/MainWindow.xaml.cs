@@ -68,6 +68,7 @@ namespace SseWpfApp
 
 
         private bool _bildirimGosterildiMi = false;
+        private string _transitionEffect = "fade";
 
         // Mevcut SSE bağlantısını dışarıdan iptal edebilmek için CancellationTokenSource
         private System.Threading.CancellationTokenSource? _sseCancellationTokenSource;
@@ -77,6 +78,7 @@ namespace SseWpfApp
             InitializeComponent();
             UygulaImageFit(Settings.Default.ImageFit);
             UygulaShowInfoBar(Settings.Default.ShowInfoBar);
+            UygulaTransitionEffect(Settings.Default.TransitionEffect);
 
             // Tray Icon Kurulumu
             SistemTepsiSimgesiOlustur();
@@ -457,6 +459,12 @@ namespace SseWpfApp
                                     UygulaShowInfoBar(infoBarElement.GetBoolean());
                                 }
 
+                                if (root.TryGetProperty("transitionEffect", out var transitionElement)
+                                    && transitionElement.ValueKind == JsonValueKind.String)
+                                {
+                                    UygulaTransitionEffect(transitionElement.GetString());
+                                }
+
                                 if (root.TryGetProperty("resimData", out var resimElement))
                                 {
                                     string base64Image = resimElement.GetString() ?? string.Empty;
@@ -738,6 +746,23 @@ namespace SseWpfApp
                 Dispatcher.BeginInvoke(Uygula);
         }
 
+        private void UygulaTransitionEffect(string? effect)
+        {
+            if (string.IsNullOrWhiteSpace(effect))
+                return;
+
+            string normalized = (effect.Trim().ToLowerInvariant() == "none") ? "none" : "fade";
+            if (_transitionEffect == normalized)
+                return;
+
+            _transitionEffect = normalized;
+            Settings.Default.TransitionEffect = normalized;
+            Settings.Default.Save();
+
+            Logger.LogInfo($"Geçiş efekti güncellendi: {normalized}");
+            EkranaYazdir($"Geçiş efekti: {normalized}");
+        }
+
         private TimeSpan FadeSuresiAl()
         {
             double yariMs = _slideIntervalSaniye * 1000 * 0.2;
@@ -763,6 +788,14 @@ namespace SseWpfApp
             {
                 try
                 {
+                    if (_transitionEffect == "none")
+                    {
+                        imgCanli.BeginAnimation(UIElement.OpacityProperty, null);
+                        imgCanli.Opacity = 1.0;
+                        imgCanli.Source = yeniBitmap;
+                        return;
+                    }
+
                     int surum = ++_resimAnimasyonSurum;
                     TimeSpan fadeSuresi = FadeSuresiAl();
                     // Double the fade duration as requested

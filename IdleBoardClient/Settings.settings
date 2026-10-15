@@ -17,5 +17,8 @@
     <Setting Name="ShowInfoBar" Type="System.Boolean" Scope="User">
       <Value Profile="(Default)">True</Value>
     </Setting>
+    <Setting Name="TransitionEffect" Type="System.String" Scope="User">
+      <Value Profile="(Default)">fade</Value>
+    </Setting>
   </Settings>
 </SettingsFile>

@@ -82,5 +82,17 @@ namespace IdleBoardClient {
                 this["ShowInfoBar"] = value;
             }
         }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("fade")]
+        public string TransitionEffect {
+            get {
+                return ((string)(this["TransitionEffect"]));
+            }
+            set {
+                this["TransitionEffect"] = value;
+            }
+        }
     }
 }
