@@ -17,7 +17,8 @@
                Opacity="1"/>
 
         <!-- Alt Bilgi Şeridi (Overlay Banner) -->
-        <Border VerticalAlignment="Bottom"
+        <Border x:Name="BottomBanner"
+            VerticalAlignment="Bottom"
             HorizontalAlignment="Stretch"
             Background="#CC000000"
             Padding="20,10">

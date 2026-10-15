@@ -76,6 +76,7 @@ namespace SseWpfApp
         {
             InitializeComponent();
             UygulaImageFit(Settings.Default.ImageFit);
+            UygulaShowInfoBar(Settings.Default.ShowInfoBar);
 
             // Tray Icon Kurulumu
             SistemTepsiSimgesiOlustur();
@@ -450,6 +451,12 @@ namespace SseWpfApp
                                     UygulaImageFit(fitElement.GetString());
                                 }
 
+                                if (root.TryGetProperty("showInfoBar", out var infoBarElement)
+                                    && (infoBarElement.ValueKind == JsonValueKind.True || infoBarElement.ValueKind == JsonValueKind.False))
+                                {
+                                    UygulaShowInfoBar(infoBarElement.GetBoolean());
+                                }
+
                                 if (root.TryGetProperty("resimData", out var resimElement))
                                 {
                                     string base64Image = resimElement.GetString() ?? string.Empty;
@@ -700,6 +707,28 @@ namespace SseWpfApp
 
                     Logger.LogInfo($"Görsel yerleşimi güncellendi: {stretch}");
                     EkranaYazdir($"Görsel yerleşimi: {stretch}");
+                }
+            }
+
+            if (Dispatcher.CheckAccess())
+                Uygula();
+            else
+                Dispatcher.BeginInvoke(Uygula);
+        }
+
+        private void UygulaShowInfoBar(bool visible)
+        {
+            void Uygula()
+            {
+                var targetVisibility = visible ? Visibility.Visible : Visibility.Collapsed;
+                if (BottomBanner.Visibility != targetVisibility)
+                {
+                    BottomBanner.Visibility = targetVisibility;
+                    Settings.Default.ShowInfoBar = visible;
+                    Settings.Default.Save();
+
+                    Logger.LogInfo($"Alt bilgi şeridi güncellendi: {(visible ? "Göster" : "Gizle")}");
+                    EkranaYazdir($"Alt bilgi şeridi: {(visible ? "Göster" : "Gizle")}");
                 }
             }
 
