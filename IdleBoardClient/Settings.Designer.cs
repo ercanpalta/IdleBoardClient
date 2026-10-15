@@ -94,5 +94,17 @@ namespace IdleBoardClient {
                 this["TransitionEffect"] = value;
             }
         }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("sequential")]
+        public string SlideshowOrder {
+            get {
+                return ((string)(this["SlideshowOrder"]));
+            }
+            set {
+                this["SlideshowOrder"] = value;
+            }
+        }
     }
 }

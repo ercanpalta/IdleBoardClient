@@ -69,6 +69,7 @@ namespace SseWpfApp
 
         private bool _bildirimGosterildiMi = false;
         private string _transitionEffect = "fade";
+        private string _slideshowOrder = "sequential";
 
         // Mevcut SSE bağlantısını dışarıdan iptal edebilmek için CancellationTokenSource
         private System.Threading.CancellationTokenSource? _sseCancellationTokenSource;
@@ -79,6 +80,7 @@ namespace SseWpfApp
             UygulaImageFit(Settings.Default.ImageFit);
             UygulaShowInfoBar(Settings.Default.ShowInfoBar);
             UygulaTransitionEffect(Settings.Default.TransitionEffect);
+            UygulaSlideshowOrder(Settings.Default.SlideshowOrder);
 
             // Tray Icon Kurulumu
             SistemTepsiSimgesiOlustur();
@@ -465,6 +467,12 @@ namespace SseWpfApp
                                     UygulaTransitionEffect(transitionElement.GetString());
                                 }
 
+                                if (root.TryGetProperty("slideshowOrder", out var orderElement)
+                                    && orderElement.ValueKind == JsonValueKind.String)
+                                {
+                                    UygulaSlideshowOrder(orderElement.GetString());
+                                }
+
                                 if (root.TryGetProperty("resimData", out var resimElement))
                                 {
                                     string base64Image = resimElement.GetString() ?? string.Empty;
@@ -556,7 +564,7 @@ namespace SseWpfApp
                     this.Hide();
                     if (_notifyIcon != null)
                     {
-                        _notifyIcon.Text = "Kiosk: Yayın Durduruldu";
+                        _notifyIcon.Text = "IdleBoard: Yayın Durduruldu";
                     }
                     if (TxtStatus != null)
                     {
@@ -623,13 +631,28 @@ namespace SseWpfApp
                 return;
             }
 
-            if (_offlineImageIndex >= cachedFiles.Count)
+            if (_slideshowOrder == "random" && cachedFiles.Count > 1)
             {
-                _offlineImageIndex = 0;
+                int nextIdx;
+                do
+                {
+                    nextIdx = Random.Shared.Next(cachedFiles.Count);
+                } while (nextIdx == _offlineImageIndex);
+                _offlineImageIndex = nextIdx;
+            }
+            else
+            {
+                if (_offlineImageIndex >= cachedFiles.Count)
+                {
+                    _offlineImageIndex = 0;
+                }
             }
 
             string filePath = cachedFiles[_offlineImageIndex];
-            _offlineImageIndex = (_offlineImageIndex + 1) % cachedFiles.Count;
+            if (_slideshowOrder != "random")
+            {
+                _offlineImageIndex = (_offlineImageIndex + 1) % cachedFiles.Count;
+            }
 
             var bitmap = ImageHelper.LoadBitmapFromFile(filePath);
             if (bitmap != null)
@@ -676,8 +699,8 @@ namespace SseWpfApp
             Settings.Default.IdleTimeSeconds = saniye;
             Settings.Default.Save();
 
-            Logger.LogInfo($"Sunucudan kiosk açılma süresi güncellendi: {saniye} saniye");
-            EkranaYazdir($"Kiosk açılma süresi güncellendi: {saniye}sn");
+            Logger.LogInfo($"Sunucudan boşta kalma süresi güncellendi: {saniye} saniye");
+            EkranaYazdir($"Boşta kalma süresi güncellendi: {saniye}sn");
         }
 
         private void UygulaImageFit(string? fitMode)
@@ -761,6 +784,23 @@ namespace SseWpfApp
 
             Logger.LogInfo($"Geçiş efekti güncellendi: {normalized}");
             EkranaYazdir($"Geçiş efekti: {normalized}");
+        }
+
+        private void UygulaSlideshowOrder(string? order)
+        {
+            if (string.IsNullOrWhiteSpace(order))
+                return;
+
+            string normalized = (order.Trim().ToLowerInvariant() == "random") ? "random" : "sequential";
+            if (_slideshowOrder == normalized)
+                return;
+
+            _slideshowOrder = normalized;
+            Settings.Default.SlideshowOrder = normalized;
+            Settings.Default.Save();
+
+            Logger.LogInfo($"Slayt sıralaması güncellendi: {normalized}");
+            EkranaYazdir($"Slayt sıralaması: {normalized}");
         }
 
         private TimeSpan FadeSuresiAl()
@@ -901,22 +941,22 @@ namespace SseWpfApp
                     {
                         case BaglantiDurumu.Bagli:
                             _notifyIcon.Icon = OlusturDurumIkonu(System.Drawing.Color.Green);
-                            _notifyIcon.Text = $"Kiosk: Bağlantı Aktif\n{ServerUrl}";
+                            _notifyIcon.Text = $"IdleBoard: Bağlantı Aktif\n{ServerUrl}";
                             break;
 
                         case BaglantiDurumu.Baglaniyor:
                             _notifyIcon.Icon = OlusturDurumIkonu(System.Drawing.Color.Orange);
                             _notifyIcon.Text = string.IsNullOrWhiteSpace(mesaj)
-                                ? "Kiosk: Bağlanıyor..."
-                                : $"Kiosk: Bağlanıyor...\n{mesaj}";
+                                ? "IdleBoard: Bağlanıyor..."
+                                : $"IdleBoard: Bağlanıyor...\n{mesaj}";
                             break;
 
                         case BaglantiDurumu.Koptu:
                             _notifyIcon.Icon = OlusturDurumIkonu(System.Drawing.Color.Red);
                             // NotifyIcon.Text has a strict max length; show only a short status here
                             _notifyIcon.Text = cacheCount > 0
-                                ? $"Kiosk: Çevrimdışı ({cacheCount} Önbellek)"
-                                : "Kiosk: Bağlantı Kesildi!";
+                                ? $"IdleBoard: Çevrimdışı ({cacheCount} Önbellek)"
+                                : "IdleBoard: Bağlantı Kesildi!";
                             // Log the full message to application logs (avoid putting long text in the tray icon)
                             if (!string.IsNullOrWhiteSpace(mesaj))
                             {

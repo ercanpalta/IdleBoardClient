@@ -1,4 +1,4 @@
-﻿using System.Configuration;
+using System.Configuration;
 using System.Data;
 using System.Windows;
 
@@ -36,7 +36,7 @@ namespace IdleBoardClient
                 }
             };
 
-            Logger.LogInfo("Kiosk Uygulaması Başlatıldı.");
+            Logger.LogInfo("Uygulama Başlatıldı.");
 
             // İlk çalıştırma ise varsayılan olarak Windows başlangıcına ekler
             AutoStartHelper.IlkKurulumAyariniKontrolEt();
@@ -44,13 +44,13 @@ namespace IdleBoardClient
             // 30 günden eski log dosyalarını temizler (isteğe bağlı gün sayısını değiştirebilirsiniz)
             Logger.CleanOldLogs(retentionDays: 30);
 
-            // Kiosk modunda ekranın ve sistemin kapanmasını engelle
+            // Ekranın ve sistemin kapanmasını engelle
             PowerManagement.UykuModunuEngelle();
         }
 
         protected override void OnExit(ExitEventArgs e)
         {
-            Logger.LogInfo("Kiosk Uygulaması Kapatıldı.");
+            Logger.LogInfo("Uygulama Kapatıldı.");
 
             // Uygulama kapanırken Windows güç ayarlarını normale döndür
             PowerManagement.UykuModunuSerbestBirak();

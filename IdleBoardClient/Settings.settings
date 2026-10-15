@@ -20,5 +20,8 @@
     <Setting Name="TransitionEffect" Type="System.String" Scope="User">
       <Value Profile="(Default)">fade</Value>
     </Setting>
+    <Setting Name="SlideshowOrder" Type="System.String" Scope="User">
+      <Value Profile="(Default)">sequential</Value>
+    </Setting>
   </Settings>
 </SettingsFile>
