@@ -16,6 +16,22 @@
                VerticalAlignment="Center"
                Opacity="1"/>
 
+        <!-- Sol Üst Marka Logosu / Filigran (Watermark) -->
+        <Border x:Name="WatermarkPanel"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Top"
+                Margin="30,26"
+                Visibility="Collapsed"
+                IsHitTestVisible="False">
+            <Image x:Name="ImgWatermark"
+                   MaxWidth="260"
+                   MaxHeight="100"
+                   Stretch="Uniform"
+                   RenderOptions.BitmapScalingMode="HighQuality"
+                   VerticalAlignment="Center"
+                   HorizontalAlignment="Center"/>
+        </Border>
+
         <!-- Alt Bilgi Şeridi (Overlay Banner) -->
         <Border x:Name="BottomBanner"
             VerticalAlignment="Bottom"

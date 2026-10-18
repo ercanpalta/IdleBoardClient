@@ -106,5 +106,29 @@ namespace IdleBoardClient {
                 this["SlideshowOrder"] = value;
             }
         }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool ShowWatermark {
+            get {
+                return ((bool)(this["ShowWatermark"]));
+            }
+            set {
+                this["ShowWatermark"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("IdleBoard")]
+        public string WatermarkText {
+            get {
+                return ((string)(this["WatermarkText"]));
+            }
+            set {
+                this["WatermarkText"] = value;
+            }
+        }
     }
 }

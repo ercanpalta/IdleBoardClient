@@ -1,7 +1,7 @@
 using IdleBoardClient;
 using System;
-using System.Drawing;
 using System.Globalization;
+using System.Windows.Controls;
 using System.IO;
 using System.Net.Http;
 using System.Runtime.InteropServices;
@@ -17,6 +17,8 @@ using System.Windows.Threading;
 using System.Windows.Input;
 // Forms ve WPF Isim Çakışmasını Önlemek İçin Alias
 using Forms = System.Windows.Forms;
+using Image = System.Windows.Controls.Image;
+using Border = System.Windows.Controls.Border;
 
 namespace SseWpfApp
 {
@@ -69,6 +71,7 @@ namespace SseWpfApp
         private bool _bildirimGosterildiMi = false;
         private string _transitionEffect = "fade";
         private string _slideshowOrder = "sequential";
+        private bool _showWatermark = false;
 
         // Mevcut SSE bağlantısını dışarıdan iptal edebilmek için CancellationTokenSource
         private System.Threading.CancellationTokenSource? _sseCancellationTokenSource;
@@ -80,6 +83,14 @@ namespace SseWpfApp
             UygulaShowInfoBar(Settings.Default.ShowInfoBar);
             UygulaTransitionEffect(Settings.Default.TransitionEffect);
             UygulaSlideshowOrder(Settings.Default.SlideshowOrder);
+
+            // Önbellekteki marka logosunu ve filigran görünürlüğünü başlat
+            var cachedLogo = ImageCacheManager.LoadWatermarkBitmap();
+            if (cachedLogo != null && WatermarkLogo != null)
+            {
+                WatermarkLogo.Source = cachedLogo;
+            }
+            UygulaShowWatermark(Settings.Default.ShowWatermark);
 
             // Tray Icon Kurulumu
             SistemTepsiSimgesiOlustur();
@@ -197,7 +208,7 @@ namespace SseWpfApp
                 bool urlDegisti = ServerUrl != settingsWin.ServerUrl;
                 ServerUrl = settingsWin.ServerUrl;
 
-                // 2. Ayarı kalıcı olarak kaydet (Disk üzerindeki user.config dosyasına yazılır)
+                // 2. Ayarları kalıcı olarak kaydet (Disk üzerindeki user.config dosyasına yazılır)
                 Settings.Default.ServerUrl = ServerUrl;
                 Settings.Default.Save();
 
@@ -207,7 +218,7 @@ namespace SseWpfApp
                     SseBaslat();
                 }
 
-                System.Windows.MessageBox.Show("Sunucu adresi kaydedildi.", "Bilgi", MessageBoxButton.OK, MessageBoxImage.Information);
+                System.Windows.MessageBox.Show("Ayarlar kaydedildi.", "Bilgi", MessageBoxButton.OK, MessageBoxImage.Information);
             }
         }
 
@@ -490,6 +501,25 @@ namespace SseWpfApp
                                     && orderElement.ValueKind == JsonValueKind.String)
                                 {
                                     UygulaSlideshowOrder(orderElement.GetString());
+                                }
+
+                                if (root.TryGetProperty("showWatermark", out var watermarkVisElement)
+                                    && (watermarkVisElement.ValueKind == JsonValueKind.True || watermarkVisElement.ValueKind == JsonValueKind.False))
+                                {
+                                    UygulaShowWatermark(watermarkVisElement.GetBoolean());
+                                }
+
+                                if (root.TryGetProperty("watermarkImage", out var watermarkImgElement))
+                                {
+                                    if (watermarkImgElement.ValueKind == JsonValueKind.String)
+                                    {
+                                        string b64 = watermarkImgElement.GetString() ?? string.Empty;
+                                        UygulaWatermarkImage(b64);
+                                    }
+                                    else if (watermarkImgElement.ValueKind == JsonValueKind.Null)
+                                    {
+                                        UygulaWatermarkImage(null);
+                                    }
                                 }
 
                                 if (root.TryGetProperty("resimData", out var resimElement))
@@ -789,6 +819,77 @@ namespace SseWpfApp
                 Uygula();
             else
                 Dispatcher.BeginInvoke(Uygula);
+        }
+
+        private Image? WatermarkLogo => (Image?)FindName("ImgWatermark");
+
+        private void UygulaWatermarkImage(string? base64)
+        {
+            void Uygula()
+            {
+                var logo = WatermarkLogo;
+                if (!string.IsNullOrWhiteSpace(base64))
+                {
+                    var bmp = ImageHelper.Base64ToBitmapImage(base64, null);
+                    if (bmp != null)
+                    {
+                        if (logo != null)
+                        {
+                            logo.Source = bmp;
+                        }
+                        _ = ImageCacheManager.SaveWatermarkImageAsync(base64);
+                        Logger.LogInfo("Marka logosu güncellendi.");
+                    }
+                }
+                else
+                {
+                    if (logo != null)
+                    {
+                        logo.Source = null;
+                    }
+                    ImageCacheManager.DeleteWatermarkImage();
+                    Logger.LogInfo("Marka logosu temizlendi.");
+                }
+                GuncelleWatermarkGorunurluk();
+            }
+
+            if (Dispatcher.CheckAccess())
+                Uygula();
+            else
+                Dispatcher.BeginInvoke(Uygula);
+        }
+
+        private void UygulaShowWatermark(bool visible)
+        {
+            void Uygula()
+            {
+                _showWatermark = visible;
+                Settings.Default.ShowWatermark = visible;
+                Settings.Default.Save();
+                GuncelleWatermarkGorunurluk();
+            }
+
+            if (Dispatcher.CheckAccess())
+                Uygula();
+            else
+                Dispatcher.BeginInvoke(Uygula);
+        }
+
+        private void GuncelleWatermarkGorunurluk()
+        {
+            var logo = WatermarkLogo;
+            bool gorunur = _showWatermark && logo != null && logo.Source != null;
+            var targetPanel = WatermarkPanel ?? (Border?)FindName("WatermarkPanel");
+            if (targetPanel != null)
+            {
+                var hedef = gorunur ? Visibility.Visible : Visibility.Collapsed;
+                if (targetPanel.Visibility != hedef)
+                {
+                    targetPanel.Visibility = hedef;
+                    Logger.LogInfo($"Marka logosu görünürlüğü güncellendi: {(gorunur ? "Göster" : "Gizle")}");
+                    EkranaYazdir($"Filigran: {(gorunur ? "Göster" : "Gizle")}");
+                }
+            }
         }
 
         private void UygulaTransitionEffect(string? effect)

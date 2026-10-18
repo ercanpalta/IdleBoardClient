@@ -23,5 +23,11 @@
     <Setting Name="SlideshowOrder" Type="System.String" Scope="User">
       <Value Profile="(Default)">sequential</Value>
     </Setting>
+    <Setting Name="ShowWatermark" Type="System.Boolean" Scope="User">
+      <Value Profile="(Default)">False</Value>
+    </Setting>
+    <Setting Name="WatermarkText" Type="System.String" Scope="User">
+      <Value Profile="(Default)">IdleBoard</Value>
+    </Setting>
   </Settings>
 </SettingsFile>

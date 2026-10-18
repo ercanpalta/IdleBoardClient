@@ -1,3 +1,4 @@
+using IdleBoardClient;
 using System;
 using System.Windows;
 

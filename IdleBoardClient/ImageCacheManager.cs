@@ -5,6 +5,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
+using System.Windows.Media.Imaging;
 
 namespace IdleBoardClient
 {
@@ -194,6 +195,60 @@ namespace IdleBoardClient
                     }
                 }
             });
+        }
+
+        public static readonly string WatermarkCachePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "watermark_cached.png");
+
+        public static async Task SaveWatermarkImageAsync(string? base64Data)
+        {
+            if (string.IsNullOrWhiteSpace(base64Data))
+                return;
+
+            try
+            {
+                int commaIdx = base64Data.IndexOf(',');
+                string cleanBase64 = (commaIdx >= 0) ? base64Data.Substring(commaIdx + 1) : base64Data;
+                byte[] imageBytes = Convert.FromBase64String(cleanBase64.Trim());
+
+                await File.WriteAllBytesAsync(WatermarkCachePath, imageBytes);
+                Logger.LogInfo("Marka logosu yerel önbelleğe kaydedildi.");
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError("Marka logosu yerel önbelleğe kaydedilirken hata oluştu.", ex);
+            }
+        }
+
+        public static BitmapImage? LoadWatermarkBitmap()
+        {
+            try
+            {
+                if (File.Exists(WatermarkCachePath))
+                {
+                    return ImageHelper.LoadBitmapFromFile(WatermarkCachePath, null);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError("Önbellekten marka logosu yüklenirken hata oluştu.", ex);
+            }
+            return null;
+        }
+
+        public static void DeleteWatermarkImage()
+        {
+            try
+            {
+                if (File.Exists(WatermarkCachePath))
+                {
+                    File.Delete(WatermarkCachePath);
+                    Logger.LogInfo("Önbellekteki marka logosu silindi.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError("Önbellekteki marka logosu silinirken hata oluştu.", ex);
+            }
         }
     }
 }
