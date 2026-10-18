@@ -50,7 +50,6 @@ namespace SseWpfApp
         private volatile bool _isOffline = false;
         private int _offlineImageIndex = 0;
         private volatile bool _isStreamStopped = false;
-        private volatile bool _hasLiveSelection = true;
 
         // System Tray Simgesi
         private Forms.NotifyIcon _notifyIcon = null!;
@@ -386,14 +385,34 @@ namespace SseWpfApp
 
                     while (!cancellationToken.IsCancellationRequested)
                     {
-                        string? line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
+                        TimeSpan streamReadTimeout = TimeSpan.FromSeconds(Math.Max(20, _slideIntervalSaniye * 2.5));
+                        using var readCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                        readCts.CancelAfter(streamReadTimeout);
+
+                        string? line;
+                        try
+                        {
+                            line = await reader.ReadLineAsync(readCts.Token).ConfigureAwait(false);
+                        }
+                        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                        {
+                            Logger.LogInfo("SSE akışında veri zaman aşımı (bağlantı koptu). Çevrimdışı moda geçiliyor.");
+                            SetOfflineMode(true);
+                            break;
+                        }
+
                         if (line == null) // end of stream
                         {
+                            Logger.LogInfo("Sunucu bağlantısı kapandı. Çevrimdışı moda geçiliyor.");
                             SetOfflineMode(true);
                             break;
                         }
 
                         if (string.IsNullOrWhiteSpace(line))
+                            continue;
+
+                        // Sunucudan gelen keep-alive / ping yorum satırlarını işle
+                        if (line.StartsWith(":", StringComparison.Ordinal))
                             continue;
 
                         // Event Stream standardına uygun "data: " satırlarını işle
@@ -484,7 +503,6 @@ namespace SseWpfApp
 
                                     if (!string.IsNullOrEmpty(base64Image))
                                     {
-                                        _hasLiveSelection = true;
                                         ResmiGuncelle(base64Image);
 
                                         // Alınan görseli arka planda diske önbelleğe kaydet
@@ -544,8 +562,8 @@ namespace SseWpfApp
 
         private void SlideTimer_Tick(object? sender, EventArgs e)
         {
-            // Çevrimdışı modda slayt döngüsünü yerel zamanlayıcı yönetir (yayın durdurulmamışsa)
-            if (_isOffline && !_isStreamStopped && _hasLiveSelection)
+            // Çevrimdışı modda slayt döngüsünü yerel zamanlayıcı yönetir
+            if (_isOffline)
             {
                 SonrakiOfflineGorseliniGoster();
             }
@@ -586,7 +604,6 @@ namespace SseWpfApp
 
         private void ClearLiveImage()
         {
-            _hasLiveSelection = false;
             Dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(() =>
             {
                 ++_resimAnimasyonSurum;
@@ -606,10 +623,14 @@ namespace SseWpfApp
                 Logger.LogInfo("Ağ/Sunucu bağlantısı koptu. Çevrimdışı (offline) önbellek moduna geçildi.");
                 EkranaYazdir("[ÇEVRİMDISI MOD] Önbellekteki görsellerle slayt gösterisi devam ediyor.");
 
-                // Ekranda henüz görsel yoksa hemen ilk görseli yükle
                 Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(() =>
                 {
-                    if (imgCanli.Source == null && _hasLiveSelection)
+                    if (!_slideTimer.IsEnabled)
+                    {
+                        _slideTimer.Start();
+                    }
+
+                    if (imgCanli.Source == null && ImageCacheManager.GetCachedCount() > 0)
                     {
                         SonrakiOfflineGorseliniGoster();
                     }
@@ -657,6 +678,7 @@ namespace SseWpfApp
             var bitmap = ImageHelper.LoadBitmapFromFile(filePath);
             if (bitmap != null)
             {
+                Logger.LogInfo($"[Çevrimdışı Slayt] Görsel gösteriliyor: {System.IO.Path.GetFileName(filePath)} ({_offlineImageIndex + 1}/{cachedFiles.Count})");
                 ResmiGuncelle(bitmap);
             }
         }
@@ -992,7 +1014,7 @@ namespace SseWpfApp
                             // Show a short, clear status when connection is lost.
                             // Continue relying on the existing slideshow loop to keep showing cached images.
                             TxtStatus.Text = cacheCount > 0
-                                ? "Bağlantı koptu"
+                                ? $"Çevrimdışı ({cacheCount} Önbellek)"
                                 : "Bağlantı koptu (Önbellek Yok)";
                             TxtStatus.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(252, 165, 165));
                             break;
