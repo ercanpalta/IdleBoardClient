@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
-	<!-- System Tray için aşağıdaki satırı ekleyin -->
+	<!-- Enable Windows Forms for System Tray integration -->
 	<UseWindowsForms>true</UseWindowsForms>
   </PropertyGroup>
 

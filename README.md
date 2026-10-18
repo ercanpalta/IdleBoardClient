@@ -1,25 +1,36 @@
 # IdleBoard Client
 
-.NET 8 ve WPF tabanlı, IdleBoard sunucusundan Server-Sent Events (SSE) protokolüyle gerçek zamanlı görsel yayını alan ve tam ekran modunda gösteren Windows istemci uygulaması.
+A Windows digital signage presentation client built with .NET and WPF that receives real-time image broadcasts from an IdleBoard server via Server-Sent Events (SSE) and displays them in borderless fullscreen mode.
 
-## 🚀 Özellikler
+## 🚀 Key Features
 
-- **Tam Ekran Pano Modu:** Ekranı kaplayan, dikkat dağıtmayan kesintisiz bilgi ve görsel panosu.
-- **Gerçek Zamanlı SSE Akışı:** Sunucudan anlık olarak yayınlanan görselleri dinleme ve ekrana yansıtma.
-- **Çevrimdışı (Offline) Önbellekleme & Fallback:** Sunucu veya ağ bağlantısı kopsa dahi önbellekteki görsellerle döngüsel slayt gösterisine devam edebilme.
-- **Sistem Tepsisi (Tray) Desteği:** İstenildiğinde sistem tepsisine küçülme ve arka planda çalışabilme.
-- **Yönetici Ayarları:** `Ctrl + Shift + S` kısayoluyla erişilebilen sunucu bağlantısı ve ayar penceresi.
-- **Otomatik Başlatma (AutoStart):** Windows açılışında otomatik başlatılabilme desteği.
+- **Borderless Fullscreen Display:** Distraction-free, borderless display panel optimized for digital monitors, screens, and public boards.
+- **Real-Time SSE Streaming:** Listens to server broadcast events over Server-Sent Events and reflects image updates immediately.
+- **Offline Caching & Fallback Slideshow:** Asynchronously caches broadcast images to disk. If network or server connectivity drops, the client automatically continues cycling through cached images offline.
+- **System Tray Integration:** Minimizes cleanly to the Windows system tray and runs unobtrusively in the background.
+- **Administration Settings:** Quick access to server connection configuration and display settings via `Ctrl + Shift + S`.
+- **System Startup Automation:** Built-in auto-start capability with Windows boot.
+- **Dynamic Display Adaptability:** Supports configurable image fit modes (uniform, uniform-to-fill, stretch) and smooth slide transition effects.
 
-## 📦 Gereksinimler ve Derleme
+## 📦 Requirements & Building
 
-- Windows 10 / 11
-- .NET 8.0 SDK / Visual Studio 2022+
+- **Operating System:** Windows 10 / 11
+- **Runtime / SDK:** .NET 8.0 SDK or higher
+- **IDE:** Visual Studio 2022+ or Visual Studio Code with C# Dev Kit
 
 ```bash
-# Projeyi derleyin
+# Restore and build the solution
 dotnet build
 
-# Uygulamayı çalıştırın
+# Launch the client application
 dotnet run --project IdleBoardClient
 ```
+
+## ⌨️ Shortcuts & Controls
+
+- **`Ctrl + Shift + S`**: Open connection and configuration settings window.
+- **Keyboard Interaction**: Automatic minimization to system tray for seamless unattended operation.
+
+## 🛡️ License
+
+MIT License
