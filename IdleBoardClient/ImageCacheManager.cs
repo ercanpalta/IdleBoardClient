@@ -2,8 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Media.Imaging;
 
@@ -58,7 +60,10 @@ namespace IdleBoardClient
             {
                 OnbellekKlasorunuOlustur();
 
-                byte[] imageBytes = Convert.FromBase64String(base64Data);
+                int commaIdx = base64Data.IndexOf(',');
+                string cleanBase64 = (commaIdx >= 0) ? base64Data.Substring(commaIdx + 1) : base64Data;
+                byte[] imageBytes = Convert.FromBase64String(cleanBase64.Trim());
+
                 string safeFileName = GuvenliDosyaAdiUret(originalFileName, imageBytes);
                 string targetPath = Path.Combine(CacheDirectory, safeFileName);
 
@@ -86,6 +91,102 @@ namespace IdleBoardClient
                 Logger.LogError($"Görsel önbelleğe kaydedilirken hata oluştu: {originalFileName}", ex);
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Sunucudaki aktif yayın görsel listesi ile yerel disk önbelleğini senkronize eder.
+        /// Sunucuda artık yayında veya mevcut olmayan eski görseller önbellekten silinir.
+        /// Eksik olan yayındaki görseller sunucudan doğrudan HTTP ile indirilip önbelleğe alınır.
+        /// </summary>
+        public static async Task SyncActiveImagesAsync(string serverBaseUrl, IReadOnlyList<string> activeFileNames, CancellationToken ct = default)
+        {
+            if (activeFileNames == null) return;
+
+            await Task.Run(async () =>
+            {
+                lock (_lockObj)
+                {
+                    OnbellekKlasorunuOlustur();
+                }
+
+                var activeSet = new HashSet<string>(activeFileNames, StringComparer.OrdinalIgnoreCase);
+
+                // 1. ADIM: Artık sunucuda seçili olmayan eski önbellek dosyalarını temizle (Purge)
+                try
+                {
+                    if (Directory.Exists(CacheDirectory))
+                    {
+                        var dir = new DirectoryInfo(CacheDirectory);
+                        foreach (var file in dir.GetFiles())
+                        {
+                            if (DesteklenenUzantilar.Contains(file.Extension) && !activeSet.Contains(file.Name))
+                            {
+                                try
+                                {
+                                    file.Delete();
+                                    Logger.LogInfo($"[Önbellek Temizleme] Sunucuda seçili olmayan eski dosya silindi: {file.Name}");
+                                }
+                                catch (Exception ex)
+                                {
+                                    Logger.LogError($"[Önbellek Temizleme] Dosya silinirken hata: {file.Name}", ex);
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError("[Önbellek Temizleme] Önbellek dizini taranırken hata.", ex);
+                }
+
+                if (activeFileNames.Count == 0) return;
+
+                // 2. ADIM: Önbellekte eksik olan aktif görselleri HTTP üzerinden hızlıca ön-yükle (Pre-fetch)
+                string baseUriString = serverBaseUrl;
+                try
+                {
+                    var uri = new Uri(serverBaseUrl);
+                    baseUriString = uri.GetLeftPart(UriPartial.Authority);
+                }
+                catch { }
+
+                using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+
+                foreach (var fileName in activeFileNames)
+                {
+                    if (ct.IsCancellationRequested) break;
+                    if (string.IsNullOrWhiteSpace(fileName)) continue;
+
+                    string localPath = Path.Combine(CacheDirectory, fileName);
+                    if (File.Exists(localPath))
+                    {
+                        var fi = new FileInfo(localPath);
+                        if (fi.Length > 0)
+                        {
+                            continue;
+                        }
+                    }
+
+                    try
+                    {
+                        string downloadUrl = $"{baseUriString.TrimEnd('/')}/images/{Uri.EscapeDataString(fileName)}";
+                        var response = await httpClient.GetAsync(downloadUrl, ct).ConfigureAwait(false);
+                        if (response.IsSuccessStatusCode)
+                        {
+                            byte[] bytes = await response.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
+                            if (bytes.Length > 0)
+                            {
+                                await File.WriteAllBytesAsync(localPath, bytes, ct).ConfigureAwait(false);
+                                Logger.LogInfo($"[Önbellek Ön-Yükleme] Eksik görsel önbelleğe kaydedildi: {fileName} ({bytes.Length / 1024} KB)");
+                            }
+                        }
+                    }
+                    catch (Exception ex) when (!ct.IsCancellationRequested)
+                    {
+                        Logger.LogError($"[Önbellek Ön-Yükleme] Görsel indirilemedi: {fileName}", ex);
+                    }
+                }
+            }, ct).ConfigureAwait(false);
         }
 
         /// <summary>

@@ -27,7 +27,7 @@ namespace SseWpfApp
         private DispatcherTimer _clockTimer = null!;
 
         // Varsayılan adresi kaydedilen Settings ayarlarından çekiyoruz
-        private string ServerUrl = Settings.Default.ServerUrl;
+        private string ServerUrl = !string.IsNullOrWhiteSpace(Settings.Default.ServerUrl) ? Settings.Default.ServerUrl : "http://localhost:3000/events";
         // Mouse takip değişkenleri
         private System.Windows.Point? _baslangicMousePozisyonu = null;
         private const double HareketeDuyarlilikEsigi = 20;
@@ -224,18 +224,12 @@ namespace SseWpfApp
 
         private void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
-            // Eğer kaydedilmiş bir URL yoksa (ilk açılış veya boş bırakılmışsa)
+            // Eğer kaydedilmiş bir URL yoksa varsayılan yerel adresi kullan
             if (string.IsNullOrWhiteSpace(ServerUrl))
             {
-                bool kayitBaşarili = IlkAcalistaUrlSor();
-
-                // Kullanıcı iptal ederse veya boş geçerse uygulamayı açma
-                if (!kayitBaşarili)
-                {
-                    System.Windows.MessageBox.Show("Sunucu adresi belirtilmediği için uygulama kapatılıyor.", "Uyarı", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    UygulamayiTamamenKapat();
-                    return;
-                }
+                ServerUrl = "http://localhost:3000/events";
+                Settings.Default.ServerUrl = ServerUrl;
+                Settings.Default.Save();
             }
 
             // Önbellekte görsel varsa ilk açılışta siyah ekran kalmaması için göster
@@ -520,6 +514,23 @@ namespace SseWpfApp
                                     {
                                         UygulaWatermarkImage(null);
                                     }
+                                }
+
+                                if (root.TryGetProperty("activeImages", out var activeImagesEl) && activeImagesEl.ValueKind == JsonValueKind.Array)
+                                {
+                                    var activeList = new List<string>();
+                                    foreach (var item in activeImagesEl.EnumerateArray())
+                                    {
+                                        if (item.ValueKind == JsonValueKind.String)
+                                        {
+                                            string? name = item.GetString();
+                                            if (!string.IsNullOrWhiteSpace(name))
+                                            {
+                                                activeList.Add(name);
+                                            }
+                                        }
+                                    }
+                                    _ = ImageCacheManager.SyncActiveImagesAsync(ServerUrl, activeList, cancellationToken);
                                 }
 
                                 if (root.TryGetProperty("resimData", out var resimElement))
