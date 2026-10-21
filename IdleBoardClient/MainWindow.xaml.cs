@@ -371,7 +371,11 @@ namespace SseWpfApp
                     // SSE akışı için HttpClient zaman aşımını sınırsız yapıyoruz
                     client.Timeout = Timeout.InfiniteTimeSpan;
 
-                    using var request = new HttpRequestMessage(HttpMethod.Get, ServerUrl);
+                    string sseUrl = ServerUrl;
+                    string appVer = AutoUpdater.CurrentVersion;
+                    sseUrl += (sseUrl.Contains('?') ? "&" : "?") + "clientVersion=" + Uri.EscapeDataString(appVer);
+
+                    using var request = new HttpRequestMessage(HttpMethod.Get, sseUrl);
                     request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("text/event-stream"));
 
                     using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
@@ -457,6 +461,16 @@ namespace SseWpfApp
                                         if (root.TryGetProperty("isPaused", out var isPausedElement) && isPausedElement.GetBoolean())
                                         {
                                             SetStreamStopped(true);
+                                        }
+                                    }
+                                    else if (tip == "update_command")
+                                    {
+                                        string? targetVer = root.TryGetProperty("targetVersion", out var tvEl) ? tvEl.GetString() : null;
+                                        string? dlUrl = root.TryGetProperty("downloadUrl", out var dlEl) ? dlEl.GetString() : null;
+                                        if (!string.IsNullOrWhiteSpace(dlUrl))
+                                        {
+                                            EkranaYazdir($"[GÜNCELLEME] Sunucudan güncelleme talimatı alındı ({targetVer}). Yükleme başlatılıyor...");
+                                            _ = AutoUpdater.ApplyUpdateAsync(dlUrl, targetVer ?? "latest");
                                         }
                                     }
                                 }
