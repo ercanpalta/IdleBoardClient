@@ -49,7 +49,7 @@ namespace SseWpfApp
         private int _resimAnimasyonSurum;
 
         // Çevrimdışı (Offline) Önbellek ve Slayt Yönetimi
-        private volatile bool _isOffline = false;
+        private volatile bool _isOffline = true;
         private int _offlineImageIndex = 0;
         private volatile bool _isStreamStopped = false;
 
