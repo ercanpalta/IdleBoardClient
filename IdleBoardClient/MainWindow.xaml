@@ -16,6 +16,21 @@
                VerticalAlignment="Center"
                Opacity="1"/>
 
+        <!-- Video Oynatıcı (Ses Kapalı) -->
+        <MediaElement x:Name="mediaVideo"
+                      Stretch="Uniform"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Center"
+                      LoadedBehavior="Manual"
+                      UnloadedBehavior="Manual"
+                      ScrubbingEnabled="True"
+                      Volume="0"
+                      IsMuted="True"
+                      Visibility="Collapsed"
+                      MediaOpened="MediaVideo_MediaOpened"
+                      MediaEnded="MediaVideo_MediaEnded"
+                      MediaFailed="MediaVideo_MediaFailed"/>
+
         <!-- Sol Üst Marka Logosu / Filigran (Watermark) -->
         <Border x:Name="WatermarkPanel"
                 HorizontalAlignment="Left"

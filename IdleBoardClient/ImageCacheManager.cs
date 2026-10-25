@@ -22,8 +22,14 @@ namespace IdleBoardClient
 
         private static readonly HashSet<string> DesteklenenUzantilar = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            ".jpg", ".jpeg", ".png", ".webp"
+            ".jpg", ".jpeg", ".png", ".webp", ".mp4"
         };
+
+        public static bool IsVideoFile(string? fileName)
+        {
+            if (string.IsNullOrWhiteSpace(fileName)) return false;
+            return fileName.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase);
+        }
 
         private const int MaxOnbellekDosyaSayisi = 200;
 
@@ -176,8 +182,18 @@ namespace IdleBoardClient
                             byte[] bytes = await response.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
                             if (bytes.Length > 0)
                             {
-                                await File.WriteAllBytesAsync(localPath, bytes, ct).ConfigureAwait(false);
-                                Logger.LogInfo($"[Önbellek Ön-Yükleme] Eksik görsel önbelleğe kaydedildi: {fileName} ({bytes.Length / 1024} KB)");
+                                string tempPath = localPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+                                try
+                                {
+                                    await File.WriteAllBytesAsync(tempPath, bytes, ct).ConfigureAwait(false);
+                                    File.Move(tempPath, localPath, overwrite: true);
+                                    Logger.LogInfo($"[Önbellek Ön-Yükleme] Eksik dosya önbelleğe kaydedildi: {fileName} ({bytes.Length / 1024} KB)");
+                                }
+                                catch (Exception writeEx)
+                                {
+                                    try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { }
+                                    Logger.LogError($"[Önbellek Ön-Yükleme] Dosya yazılamadı: {fileName}", writeEx);
+                                }
                             }
                         }
                     }

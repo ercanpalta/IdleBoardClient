@@ -547,15 +547,29 @@ namespace SseWpfApp
                                     _ = ImageCacheManager.SyncActiveImagesAsync(ServerUrl, activeList, cancellationToken);
                                 }
 
-                                if (root.TryGetProperty("resimData", out var resimElement))
+                                string? dosyaAdi = null;
+                                if (root.TryGetProperty("dosyaAdi", out var dosyaElement))
+                                {
+                                    dosyaAdi = dosyaElement.GetString();
+                                }
+
+                                bool isVideo = false;
+                                if (root.TryGetProperty("mediaType", out var mtElement) && mtElement.GetString() == "video")
+                                {
+                                    isVideo = true;
+                                }
+                                else if (!string.IsNullOrEmpty(dosyaAdi) && ImageCacheManager.IsVideoFile(dosyaAdi))
+                                {
+                                    isVideo = true;
+                                }
+
+                                if (isVideo && !string.IsNullOrEmpty(dosyaAdi))
+                                {
+                                    VideoyuGuncelle(dosyaAdi);
+                                }
+                                else if (root.TryGetProperty("resimData", out var resimElement))
                                 {
                                     string base64Image = resimElement.GetString() ?? string.Empty;
-                                    string? dosyaAdi = null;
-                                    if (root.TryGetProperty("dosyaAdi", out var dosyaElement))
-                                    {
-                                        dosyaAdi = dosyaElement.GetString();
-                                    }
-
                                     if (!string.IsNullOrEmpty(base64Image))
                                     {
                                         ResmiGuncelle(base64Image);
@@ -662,9 +676,16 @@ namespace SseWpfApp
             Dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(() =>
             {
                 ++_resimAnimasyonSurum;
+                if (mediaVideo.Visibility == Visibility.Visible)
+                {
+                    mediaVideo.Stop();
+                    mediaVideo.Source = null;
+                    mediaVideo.Visibility = Visibility.Collapsed;
+                }
                 imgCanli.BeginAnimation(UIElement.OpacityProperty, null);
                 imgCanli.Source = null;
                 imgCanli.Opacity = 1.0;
+                imgCanli.Visibility = Visibility.Visible;
             }));
         }
 
@@ -730,11 +751,29 @@ namespace SseWpfApp
                 _offlineImageIndex = (_offlineImageIndex + 1) % cachedFiles.Count;
             }
 
-            var bitmap = ImageHelper.LoadBitmapFromFile(filePath);
-            if (bitmap != null)
+            if (ImageCacheManager.IsVideoFile(filePath))
             {
-                Logger.LogInfo($"[Çevrimdışı Slayt] Görsel gösteriliyor: {System.IO.Path.GetFileName(filePath)} ({_offlineImageIndex + 1}/{cachedFiles.Count})");
-                ResmiGuncelle(bitmap);
+                Logger.LogInfo($"[Çevrimdışı Slayt] Video gösteriliyor: {System.IO.Path.GetFileName(filePath)} ({_offlineImageIndex + 1}/{cachedFiles.Count})");
+                VideoyuGuncelle(System.IO.Path.GetFileName(filePath));
+                if (_slideTimer.IsEnabled)
+                {
+                    _slideTimer.Stop();
+                    _slideTimer.Interval = TimeSpan.FromSeconds(65);
+                    _slideTimer.Start();
+                }
+            }
+            else
+            {
+                if (_slideTimer.Interval != TimeSpan.FromSeconds(_slideIntervalSaniye))
+                {
+                    _slideTimer.Interval = TimeSpan.FromSeconds(_slideIntervalSaniye);
+                }
+                var bitmap = ImageHelper.LoadBitmapFromFile(filePath);
+                if (bitmap != null)
+                {
+                    Logger.LogInfo($"[Çevrimdışı Slayt] Görsel gösteriliyor: {System.IO.Path.GetFileName(filePath)} ({_offlineImageIndex + 1}/{cachedFiles.Count})");
+                    ResmiGuncelle(bitmap);
+                }
             }
         }
 
@@ -807,13 +846,14 @@ namespace SseWpfApp
 
             void Uygula()
             {
-                if (imgCanli.Stretch != stretch)
+                if (imgCanli.Stretch != stretch || mediaVideo.Stretch != stretch)
                 {
                     imgCanli.Stretch = stretch;
+                    mediaVideo.Stretch = stretch;
                     Settings.Default.ImageFit = stretch.ToString();
                     Settings.Default.Save();
 
-                    Logger.LogInfo($"Görsel yerleşimi güncellendi: {stretch}");
+                    Logger.LogInfo($"Görsel ve video yerleşimi güncellendi: {stretch}");
                     EkranaYazdir($"Görsel yerleşimi: {stretch}");
                 }
             }
@@ -958,6 +998,117 @@ namespace SseWpfApp
             return TimeSpan.FromMilliseconds(ms);
         }
 
+        private int _videoPlayVersion = 0;
+
+        private void VideoyuGuncelle(string dosyaAdi)
+        {
+            Dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(() =>
+            {
+                try
+                {
+                    int version = ++_videoPlayVersion;
+                    string localPath = System.IO.Path.Combine(ImageCacheManager.CacheDirectory, dosyaAdi);
+                    Uri videoUri;
+
+                    if (System.IO.File.Exists(localPath) && new System.IO.FileInfo(localPath).Length > 0)
+                    {
+                        videoUri = new Uri(localPath, UriKind.Absolute);
+                    }
+                    else
+                    {
+                        string baseUri = ServerUrl;
+                        try
+                        {
+                            var u = new Uri(ServerUrl);
+                            baseUri = u.GetLeftPart(UriPartial.Authority);
+                        }
+                        catch { }
+                        string remoteUrl = $"{baseUri.TrimEnd('/')}/images/{Uri.EscapeDataString(dosyaAdi)}";
+                        videoUri = new Uri(remoteUrl, UriKind.Absolute);
+                    }
+
+                    // Siyah ekran oluşmaması ve videonun beklemeden başlaması için:
+                    // Önceki görseli hemen gizlemiyoruz, video ilk karesini hazırlayınca (MediaOpened)
+                    // görseli kapatıp videoyu öne çıkarıyoruz.
+                    mediaVideo.Stop();
+                    mediaVideo.Source = videoUri;
+                    mediaVideo.Volume = 0;
+                    mediaVideo.IsMuted = true;
+                    mediaVideo.Play();
+
+                    // Güvenlik zamanlayıcısı: Eğer MediaOpened gecikirse videoyu ekrana al
+                    var fallbackTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+                    fallbackTimer.Tick += (s, e) =>
+                    {
+                        fallbackTimer.Stop();
+                        if (version == _videoPlayVersion && mediaVideo.Visibility != Visibility.Visible)
+                        {
+                            MediaVideo_MediaOpened(mediaVideo, new RoutedEventArgs());
+                        }
+                    };
+                    fallbackTimer.Start();
+
+                    Logger.LogInfo($"[Video Oynatıcı] Video oynatılıyor (Sessiz): {dosyaAdi}");
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError($"[Video Oynatıcı] Video başlatılırken hata: {dosyaAdi}", ex);
+                }
+            }));
+        }
+
+        private void MediaVideo_MediaOpened(object sender, RoutedEventArgs e)
+        {
+            Dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(() =>
+            {
+                try
+                {
+                    mediaVideo.Visibility = Visibility.Visible;
+                    mediaVideo.Opacity = 1.0;
+                    mediaVideo.Play();
+
+                    // Video açılıp ilk kare hazır olunca önceki görseli temizle (artık bellekte veya ekranda eski resim kalmaz)
+                    imgCanli.BeginAnimation(UIElement.OpacityProperty, null);
+                    imgCanli.Opacity = 0.0;
+                    imgCanli.Source = null;
+                    imgCanli.Visibility = Visibility.Collapsed;
+                }
+                catch { }
+            }));
+        }
+
+        private void MediaVideo_MediaEnded(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                mediaVideo.Pause();
+                if (_isOffline)
+                {
+                    Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(() =>
+                    {
+                        SonrakiOfflineGorseliniGoster();
+                    }));
+                }
+            }
+            catch { }
+        }
+
+        private void MediaVideo_MediaFailed(object? sender, ExceptionRoutedEventArgs e)
+        {
+            Logger.LogError($"[Video Oynatıcı] Video oynatılamadı: {e.ErrorException?.Message}", e.ErrorException);
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                mediaVideo.Visibility = Visibility.Collapsed;
+                mediaVideo.Source = null;
+                imgCanli.Visibility = Visibility.Visible;
+                imgCanli.Opacity = 1.0;
+                if (_isOffline)
+                {
+                    SonrakiOfflineGorseliniGoster();
+                }
+            }));
+        }
+
         private void ResmiGuncelle(string? base64String)
         {
             if (string.IsNullOrWhiteSpace(base64String)) return;
@@ -976,6 +1127,48 @@ namespace SseWpfApp
             {
                 try
                 {
+                    int surum = ++_resimAnimasyonSurum;
+                    TimeSpan fadeSuresi = FadeSuresiAl();
+                    TimeSpan doubleFade = TimeSpan.FromMilliseconds(fadeSuresi.TotalMilliseconds * 2);
+
+                    // EĞER VİDEODAN RESME GEÇİLİYORSA:
+                    // Eski resmi hiç devreye sokmadan doğrudan yeni resmi videonun dondurulmuş son karesi üstüne açıyoruz!
+                    if (mediaVideo.Visibility == Visibility.Visible)
+                    {
+                        imgCanli.BeginAnimation(UIElement.OpacityProperty, null);
+                        imgCanli.Source = yeniBitmap;
+                        imgCanli.Visibility = Visibility.Visible;
+
+                        if (_transitionEffect == "none")
+                        {
+                            imgCanli.Opacity = 1.0;
+                            mediaVideo.Stop();
+                            mediaVideo.Source = null;
+                            mediaVideo.Visibility = Visibility.Collapsed;
+                            return;
+                        }
+
+                        imgCanli.Opacity = 0.0;
+                        var videoFadeIn = new DoubleAnimation(0.0, 1.0, doubleFade)
+                        {
+                            EasingFunction = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut }
+                        };
+                        videoFadeIn.Completed += (s, e) =>
+                        {
+                            if (surum != _resimAnimasyonSurum) return;
+                            try
+                            {
+                                mediaVideo.Stop();
+                                mediaVideo.Source = null;
+                                mediaVideo.Visibility = Visibility.Collapsed;
+                            }
+                            catch { }
+                        };
+                        imgCanli.BeginAnimation(UIElement.OpacityProperty, videoFadeIn);
+                        return;
+                    }
+
+                    // NORMAL RESİMDEN RESME GEÇİŞ
                     if (_transitionEffect == "none")
                     {
                         imgCanli.BeginAnimation(UIElement.OpacityProperty, null);
@@ -983,11 +1176,6 @@ namespace SseWpfApp
                         imgCanli.Source = yeniBitmap;
                         return;
                     }
-
-                    int surum = ++_resimAnimasyonSurum;
-                    TimeSpan fadeSuresi = FadeSuresiAl();
-                    // Double the fade duration as requested
-                    TimeSpan doubleFade = TimeSpan.FromMilliseconds(fadeSuresi.TotalMilliseconds * 2);
 
                     // Ensure no lingering animations and start from fully visible
                     imgCanli.BeginAnimation(UIElement.OpacityProperty, null);
