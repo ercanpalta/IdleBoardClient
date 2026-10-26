@@ -1,4 +1,4 @@
-using IdleBoardClient;
+﻿using IdleBoardClient;
 using System;
 using System.Globalization;
 using System.Windows.Controls;
@@ -52,6 +52,13 @@ namespace SseWpfApp
         private volatile bool _isOffline = true;
         private int _offlineImageIndex = 0;
         private volatile bool _isStreamStopped = false;
+        private volatile bool _isInitialSyncCompleted = false;
+        private volatile bool _isInitialSyncRunning = false;
+        private volatile string? _sonSunucuYayinDosyasi = null;
+        private volatile bool _sonSunucuYayinVideoMu = false;
+        private volatile string? _sonSunucuYayinBase64 = null;
+        private volatile bool _isStreamPinned = false;
+        private double _videoStartOffsetSec = 0;
 
         // System Tray Simgesi
         private Forms.NotifyIcon _notifyIcon = null!;
@@ -109,7 +116,7 @@ namespace SseWpfApp
                 Interval = TimeSpan.FromSeconds(5)
             };
             _slideTimer.Tick += SlideTimer_Tick;
-            _slideTimer.Start();
+            // Çevrimdışı moda geçene kadar slayt zamanlayıcısını başlatma (sunucu yayını yönetecek)
 
             // Saat zamanlayıcısını başlat
             StartSystemClock();
@@ -215,31 +222,213 @@ namespace SseWpfApp
                 // 3. Eğer URL değiştiyse yeni bağlantıyı başlat
                 if (urlDegisti)
                 {
+                    _isInitialSyncCompleted = false;
+                    LoadingOverlay.Visibility = System.Windows.Visibility.Visible;
+                    TxtLoadingTitle.Text = "Veriler alınıyor...";
+                    TxtLoadingStatus.Text = "Yeni sunucu adresi ile eşitleniyor...";
                     SseBaslat();
+                    BaslatBaglantiZamanAsimiTakibi();
                 }
 
                 System.Windows.MessageBox.Show("Ayarlar kaydedildi.", "Bilgi", MessageBoxButton.OK, MessageBoxImage.Information);
             }
         }
 
-        private void MainWindow_Loaded(object sender, RoutedEventArgs e)
+        private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
-            // Eğer kaydedilmiş bir URL yoksa varsayılan yerel adresi kullan
-            if (string.IsNullOrWhiteSpace(ServerUrl))
+            // 1. Kurulum sihirbazından veya Registry'den gelen adresi kontrol et
+            string? configuredUrl = ServerDiscoveryService.GetConfiguredServerUrl();
+            if (!string.IsNullOrWhiteSpace(configuredUrl))
             {
-                ServerUrl = "http://localhost:3000/events";
+                ServerUrl = configuredUrl;
                 Settings.Default.ServerUrl = ServerUrl;
                 Settings.Default.Save();
             }
 
-            // Önbellekte görsel varsa ilk açılışta siyah ekran kalmaması için göster
-            if (ImageCacheManager.GetCachedCount() > 0)
+            // 2. İlk açılışta yükleniyor / eşitleme ekranını göster
+            LoadingOverlay.Visibility = System.Windows.Visibility.Visible;
+            TxtLoadingTitle.Text = "Sunucu Aranıyor...";
+            TxtLoadingStatus.Text = "Ağdaki IdleBoard sunucusuna bağlanılıyor...";
+
+            // 3. Eğer mevcut URL localhost ise veya geçersiz ise, yerel ağda sunucuyu otomatik bulmayı dene
+            bool isLocalhost = ServerUrl.Contains("localhost", StringComparison.OrdinalIgnoreCase) ||
+                               ServerUrl.Contains("127.0.0.1", StringComparison.OrdinalIgnoreCase);
+
+            if (isLocalhost || !ServerDiscoveryService.IsValidServerUrl(ServerUrl))
             {
-                SonrakiOfflineGorseliniGoster();
+                TxtLoadingTitle.Text = "Ağ Taranıyor...";
+                TxtLoadingStatus.Text = "Yerel ağdaki IdleBoard sunucusu otomatik aranıyor...";
+
+                var discovered = await ServerDiscoveryService.DiscoverServerAsync(TimeSpan.FromSeconds(2.0));
+                if (discovered != null)
+                {
+                    ServerUrl = discovered.EventsUrl;
+                    Settings.Default.ServerUrl = ServerUrl;
+                    Settings.Default.Save();
+                    Logger.LogInfo($"[Otomatik Keşif] Sunucu bulundu ve bağlandı: {ServerUrl}");
+                    TxtLoadingStatus.Text = $"Sunucu bulundu: {discovered.ServerUrl}. Veriler eşitleniyor...";
+                }
             }
 
-            // Geçerli URL varsa bağlantıyı başlat
+            // 4. Bağlantıyı başlat
             SseBaslat();
+
+            // 5. Sunucuya ulaşılamama durumunda yerel diskteki önbellekten devam etme zaman aşımı
+            BaslatBaglantiZamanAsimiTakibi();
+        }
+
+        private void BaslatBaglantiZamanAsimiTakibi()
+        {
+            var timeoutTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
+            timeoutTimer.Tick += async (s, e) =>
+            {
+                timeoutTimer.Stop();
+                if (!_isInitialSyncCompleted)
+                {
+                    // Bağlantı kurulamadıysa, ağda başka/yeni bir sunucu var mı diye bir kez daha tara
+                    var discovered = await ServerDiscoveryService.DiscoverServerAsync(TimeSpan.FromSeconds(2.0));
+                    if (discovered != null && discovered.EventsUrl != ServerUrl)
+                    {
+                        ServerUrl = discovered.EventsUrl;
+                        Settings.Default.ServerUrl = ServerUrl;
+                        Settings.Default.Save();
+                        Logger.LogInfo($"[Zaman Aşımı Kurtarma] Ağdaki yeni sunucuya bağlanılıyor: {ServerUrl}");
+                        SseBaslat();
+                        return;
+                    }
+
+                    if (ImageCacheManager.GetCachedCount() > 0)
+                    {
+                        TxtLoadingTitle.Text = "Çevrimdışı Mod";
+                        TxtLoadingStatus.Text = "Sunucuya ulaşılamadı. Yerel diskteki verilerle başlatılıyor...";
+
+                        var hideTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1.5) };
+                        hideTimer.Tick += (hs, he) =>
+                        {
+                            hideTimer.Stop();
+                            if (!_isInitialSyncCompleted)
+                            {
+                                SonrakiOfflineGorseliniGoster();
+                                LoadingOverlay.Visibility = System.Windows.Visibility.Collapsed;
+                            }
+                        };
+                        hideTimer.Start();
+                    }
+                    else
+                    {
+                        // Önbellekte de veri yoksa manuel giriş ekranını aç!
+                        bool ayarlandi = IlkAcalistaUrlSor();
+                        if (ayarlandi)
+                        {
+                            SseBaslat();
+                        }
+                        else
+                        {
+                            TxtLoadingTitle.Text = "Bağlantı Kurulamadı";
+                            TxtLoadingStatus.Text = "Sunucuya bağlanılamadı. Lütfen sunucu adresini kontrol edin.\n(Ayarlar için Ctrl + Shift + S tuşlarına basabilirsiniz)";
+                        }
+                    }
+                }
+            };
+            timeoutTimer.Start();
+        }
+
+        private async Task BaslangicEsitlemesiniYapAsync(IReadOnlyList<string> activeList, CancellationToken ct)
+        {
+            if (_isInitialSyncCompleted) return;
+
+            Dispatcher.Invoke(() =>
+            {
+                TxtLoadingTitle.Text = "Veriler alınıyor...";
+                TxtLoadingStatus.Text = $"{activeList.Count} adet medya dosyası sunucu ile eşitleniyor...";
+            });
+
+            await ImageCacheManager.SyncActiveImagesAsync(ServerUrl, activeList, (current, total, file) =>
+            {
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    TxtLoadingStatus.Text = $"Dosyalar eşitleniyor ({current}/{total}): {file}";
+                }));
+            }, ct);
+
+            _isInitialSyncCompleted = true;
+
+            // Eşitleme bittiğinde sunucu yayın akışında o an hangi görsel/video varsa doğrudan onu diskten ekrana getir
+            bool gosterildi = false;
+            if (!string.IsNullOrEmpty(_sonSunucuYayinDosyasi))
+            {
+                if (_sonSunucuYayinVideoMu)
+                {
+                    Dispatcher.Invoke(() => VideoyuGuncelle(_sonSunucuYayinDosyasi, _videoStartOffsetSec));
+                    gosterildi = true;
+                }
+                else
+                {
+                    gosterildi = await ResmiGuncelleDosyadanAsync(_sonSunucuYayinDosyasi, _sonSunucuYayinBase64);
+                }
+            }
+
+            if (!gosterildi && _isOffline)
+            {
+                Dispatcher.Invoke(() => SonrakiOfflineGorseliniGoster());
+            }
+
+            // Yükleme ekranını yumuşak geçişle kapat
+            Dispatcher.Invoke(() =>
+            {
+                var fadeAnimation = new System.Windows.Media.Animation.DoubleAnimation(1.0, 0.0, TimeSpan.FromMilliseconds(350));
+                fadeAnimation.Completed += (s, ev) =>
+                {
+                    LoadingOverlay.Visibility = System.Windows.Visibility.Collapsed;
+                };
+                LoadingOverlay.BeginAnimation(UIElement.OpacityProperty, fadeAnimation);
+            });
+        }
+
+        private async Task<bool> ResmiGuncelleDosyadanAsync(string dosyaAdi, string? base64Fallback)
+        {
+            try
+            {
+                // Önce görselin yerel diskte olduğundan emin ol (Canlı yayından doğrudan oynatma ASLA yapılmaz)
+                string? localPath = await ImageCacheManager.EnsureFileDownloadedAsync(ServerUrl, dosyaAdi);
+
+                if (!string.IsNullOrEmpty(localPath) && System.IO.File.Exists(localPath))
+                {
+                    var bmp = ImageHelper.LoadBitmapFromFile(localPath);
+                    if (bmp != null)
+                    {
+                        ResmiGuncelle(bmp);
+                        return true;
+                    }
+                }
+
+                // Eğer indirme başarısız olduysa ama SSE içinde base64 verisi geldiyse
+                if (!string.IsNullOrEmpty(base64Fallback))
+                {
+                    string? savedPath = await ImageCacheManager.SaveImageAsync(dosyaAdi, base64Fallback);
+                    if (!string.IsNullOrEmpty(savedPath) && System.IO.File.Exists(savedPath))
+                    {
+                        var bmp = ImageHelper.LoadBitmapFromFile(savedPath);
+                        if (bmp != null)
+                        {
+                            ResmiGuncelle(bmp);
+                            return true;
+                        }
+                    }
+                    ResmiGuncelle(base64Fallback);
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError($"[Görsel] Dosyadan görsel yüklenirken hata: {dosyaAdi}", ex);
+            }
+            return false;
+        }
+
+        private async void ResmiGuncelleDosyadan(string dosyaAdi, string? base64Fallback)
+        {
+            await ResmiGuncelleDosyadanAsync(dosyaAdi, base64Fallback);
         }
 
         private void SseBaslat()
@@ -394,7 +583,7 @@ namespace SseWpfApp
 
                     while (!cancellationToken.IsCancellationRequested)
                     {
-                        TimeSpan streamReadTimeout = TimeSpan.FromSeconds(Math.Max(20, _slideIntervalSaniye * 2.5));
+                        TimeSpan streamReadTimeout = TimeSpan.FromSeconds(90);
                         using var readCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                         readCts.CancelAfter(streamReadTimeout);
 
@@ -434,44 +623,127 @@ namespace SseWpfApp
                                 using var doc = JsonDocument.Parse(jsonString);
                                 var root = doc.RootElement;
 
+                                string tip = "";
                                 if (root.TryGetProperty("tip", out var tipElement))
                                 {
-                                    string tip = tipElement.GetString() ?? "";
-                                    if (tip == "stream_control")
+                                    tip = tipElement.GetString() ?? "";
+                                }
+
+                                if (tip == "stream_control")
+                                {
+                                    if (root.TryGetProperty("action", out var actionElement))
                                     {
-                                        if (root.TryGetProperty("action", out var actionElement))
-                                        {
-                                            string action = actionElement.GetString() ?? "";
-                                            if (action == "stop" || action == "pause")
-                                            {
-                                                SetStreamStopped(true);
-                                            }
-                                            else if (action == "clear")
-                                            {
-                                                ClearLiveImage();
-                                            }
-                                            else if (action == "start" || action == "resume")
-                                            {
-                                                SetStreamStopped(false);
-                                            }
-                                        }
-                                    }
-                                    else if (tip == "init")
-                                    {
-                                        if (root.TryGetProperty("isPaused", out var isPausedElement) && isPausedElement.GetBoolean())
+                                        string action = actionElement.GetString() ?? "";
+                                        if (action == "stop" || action == "pause")
                                         {
                                             SetStreamStopped(true);
                                         }
-                                    }
-                                    else if (tip == "update_command")
-                                    {
-                                        string? targetVer = root.TryGetProperty("targetVersion", out var tvEl) ? tvEl.GetString() : null;
-                                        string? dlUrl = root.TryGetProperty("downloadUrl", out var dlEl) ? dlEl.GetString() : null;
-                                        if (!string.IsNullOrWhiteSpace(dlUrl))
+                                        else if (action == "clear")
                                         {
-                                            EkranaYazdir($"[GÜNCELLEME] Sunucudan güncelleme talimatı alındı ({targetVer}). Yükleme başlatılıyor...");
-                                            _ = AutoUpdater.ApplyUpdateAsync(dlUrl, targetVer ?? "latest");
+                                            ClearLiveImage();
                                         }
+                                        else if (action == "start" || action == "resume")
+                                        {
+                                            SetStreamStopped(false);
+                                        }
+                                    }
+                                    continue;
+                                }
+                                else if (tip == "pin_control")
+                                {
+                                    bool pinned = root.TryGetProperty("isPinned", out var pinEl) && pinEl.GetBoolean();
+                                    _isStreamPinned = pinned;
+                                    Logger.LogInfo($"[Pin] Sunucudan sabitleme talimatı alındı: {pinned}");
+
+                                    if (pinned)
+                                    {
+                                        if (root.TryGetProperty("fileName", out var fnEl) && !string.IsNullOrEmpty(fnEl.GetString()))
+                                        {
+                                            string pFile = fnEl.GetString()!;
+                                            _sonSunucuYayinDosyasi = pFile;
+                                            bool isVid = root.TryGetProperty("isVideo", out var vEl) ? vEl.GetBoolean() : ImageCacheManager.IsVideoFile(pFile);
+                                            _sonSunucuYayinVideoMu = isVid;
+
+                                            if (_isInitialSyncCompleted)
+                                            {
+                                                Dispatcher.Invoke(() =>
+                                                {
+                                                    if (isVid) VideoyuGuncelle(pFile);
+                                                    else ResmiGuncelleDosyadan(pFile, null);
+                                                });
+                                            }
+                                        }
+                                    }
+                                    continue;
+                                }
+                                else if (tip == "stream_status")
+                                {
+                                    if (root.TryGetProperty("isPinned", out var isPinEl))
+                                    {
+                                        _isStreamPinned = isPinEl.GetBoolean();
+                                    }
+                                    if (root.TryGetProperty("isPaused", out var isPauseEl))
+                                    {
+                                        SetStreamStopped(isPauseEl.GetBoolean());
+                                    }
+                                    if (root.TryGetProperty("currentImage", out var curImgEl) && !string.IsNullOrEmpty(curImgEl.GetString()))
+                                    {
+                                        string cFile = curImgEl.GetString()!;
+                                        bool isVid = root.TryGetProperty("isVideo", out var ivEl) ? ivEl.GetBoolean() : ImageCacheManager.IsVideoFile(cFile);
+                                        
+                                        if (_isStreamPinned || _sonSunucuYayinDosyasi != cFile)
+                                        {
+                                            _sonSunucuYayinDosyasi = cFile;
+                                            _sonSunucuYayinVideoMu = isVid;
+
+                                            if (_isInitialSyncCompleted)
+                                            {
+                                                Dispatcher.Invoke(() =>
+                                                {
+                                                    if (isVid) VideoyuGuncelle(cFile);
+                                                    else ResmiGuncelleDosyadan(cFile, null);
+                                                });
+                                            }
+                                        }
+                                    }
+                                    continue;
+                                }
+                                else if (tip == "update_command")
+                                {
+                                    string? targetVer = root.TryGetProperty("targetVersion", out var tvEl) ? tvEl.GetString() : null;
+                                    string? dlUrl = root.TryGetProperty("downloadUrl", out var dlEl) ? dlEl.GetString() : null;
+                                    if (!string.IsNullOrWhiteSpace(dlUrl))
+                                    {
+                                        EkranaYazdir($"[GÜNCELLEME] Sunucudan güncelleme talimatı alındı ({targetVer}). Yükleme başlatılıyor...");
+                                        _ = AutoUpdater.ApplyUpdateAsync(dlUrl, targetVer ?? "latest");
+                                    }
+                                    continue;
+                                }
+                                else if (tip == "init")
+                                {
+                                    if (root.TryGetProperty("isPaused", out var isPausedElement))
+                                    {
+                                        SetStreamStopped(isPausedElement.GetBoolean());
+                                    }
+                                    if (root.TryGetProperty("isPinned", out var isPinEl))
+                                    {
+                                        _isStreamPinned = isPinEl.GetBoolean();
+                                        Logger.LogInfo($"[Init] Sunucu sabitleme durumu: {_isStreamPinned}");
+                                    }
+                                    if (root.TryGetProperty("currentImage", out var curImgEl) && !string.IsNullOrEmpty(curImgEl.GetString()))
+                                    {
+                                        _sonSunucuYayinDosyasi = curImgEl.GetString();
+                                        _sonSunucuYayinVideoMu = root.TryGetProperty("isVideo", out var ivEl) && ivEl.GetBoolean();
+                                        if (_sonSunucuYayinVideoMu && root.TryGetProperty("broadcastAt", out var initBatEl) && initBatEl.ValueKind == JsonValueKind.Number)
+                                        {
+                                            long initBat = initBatEl.GetInt64();
+                                            if (initBat > 0)
+                                            {
+                                                long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                                                _videoStartOffsetSec = Math.Max(0, (now - initBat) / 1000.0);
+                                            }
+                                        }
+                                        Logger.LogInfo($"[Init] Sunucu anlık yayın medyası: {_sonSunucuYayinDosyasi} (Video: {_sonSunucuYayinVideoMu}, Sabitli: {_isStreamPinned}, Offset: {_videoStartOffsetSec:0.0}s)");
                                     }
                                 }
 
@@ -481,10 +753,10 @@ namespace SseWpfApp
                                     UygulaSlideInterval(intervalElement.GetDouble());
                                 }
 
-                                if (root.TryGetProperty("kioskIdleTimeout", out var idleElement)
+                                if ((root.TryGetProperty("displayIdleTimeout", out var idleElement) || root.TryGetProperty("idleTimeout", out idleElement) || root.TryGetProperty("kioskIdleTimeout", out idleElement))
                                     && idleElement.ValueKind == JsonValueKind.Number)
                                 {
-                                    UygulaKioskIdleTimeout(idleElement.GetInt32());
+                                    UygulaBostaKalmaZamanAsimi(idleElement.GetInt32());
                                 }
 
                                 if (root.TryGetProperty("imageFit", out var fitElement)
@@ -544,7 +816,32 @@ namespace SseWpfApp
                                             }
                                         }
                                     }
-                                    _ = ImageCacheManager.SyncActiveImagesAsync(ServerUrl, activeList, cancellationToken);
+                                    if (!_isInitialSyncCompleted)
+                                    {
+                                        if (!_isInitialSyncRunning)
+                                        {
+                                            _isInitialSyncRunning = true;
+                                            _ = Task.Run(async () =>
+                                            {
+                                                try
+                                                {
+                                                    await BaslangicEsitlemesiniYapAsync(activeList, cancellationToken);
+                                                }
+                                                catch (Exception ex)
+                                                {
+                                                    Logger.LogError("Başlangıç eşitlemesi hatası", ex);
+                                                }
+                                                finally
+                                                {
+                                                    _isInitialSyncRunning = false;
+                                                }
+                                            }, cancellationToken);
+                                        }
+                                    }
+                                    else
+                                    {
+                                        _ = ImageCacheManager.SyncActiveImagesAsync(ServerUrl, activeList, null, cancellationToken);
+                                    }
                                 }
 
                                 string? dosyaAdi = null;
@@ -563,20 +860,60 @@ namespace SseWpfApp
                                     isVideo = true;
                                 }
 
+                                string? resimBase64Data = root.TryGetProperty("resimData", out var rDataEl) ? rDataEl.GetString() : null;
+
+                                // Sunucudan gelen yayın akışı bilgisini hafızada tut
+                                if (!string.IsNullOrEmpty(dosyaAdi) || !string.IsNullOrEmpty(resimBase64Data))
+                                {
+                                    _sonSunucuYayinDosyasi = dosyaAdi;
+                                    _sonSunucuYayinVideoMu = isVideo;
+                                    _sonSunucuYayinBase64 = resimBase64Data;
+                                }
+
+                                bool isIncomingPinned = root.TryGetProperty("isPinned", out var imgPinnedEl) && imgPinnedEl.GetBoolean();
+
+                                // Eğer ekranda sabitleme aktifse ve gelen mesaj sabitlenmiş bir medya DEĞİLSE:
+                                // Rutin slayt geçişini yoksay ve ekrandaki sabitlenmiş medyayı koru!
+                                if (_isStreamPinned && !isIncomingPinned)
+                                {
+                                    continue;
+                                }
+
+                                _isStreamPinned = isIncomingPinned;
+
+                                // İlk açılış eşitlemesi bitene kadar tekil medya oynatmayı beklet
+                                if (!_isInitialSyncCompleted)
+                                {
+                                    continue;
+                                }
+
+                                double elapsedSec = 0;
+                                JsonElement playBatEl = default;
+                                if (isVideo && (root.TryGetProperty("broadcastAt", out playBatEl) || root.TryGetProperty("latestBroadcastAt", out playBatEl)))
+                                {
+                                    if (playBatEl.ValueKind == JsonValueKind.Number)
+                                    {
+                                        long playBat = playBatEl.GetInt64();
+                                        if (playBat > 0)
+                                        {
+                                            long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                                            elapsedSec = Math.Max(0, (now - playBat) / 1000.0);
+                                        }
+                                    }
+                                }
+
                                 if (isVideo && !string.IsNullOrEmpty(dosyaAdi))
                                 {
-                                    VideoyuGuncelle(dosyaAdi);
+                                    VideoyuGuncelle(dosyaAdi, elapsedSec);
                                 }
-                                else if (root.TryGetProperty("resimData", out var resimElement))
+                                else if (!string.IsNullOrEmpty(dosyaAdi))
                                 {
-                                    string base64Image = resimElement.GetString() ?? string.Empty;
-                                    if (!string.IsNullOrEmpty(base64Image))
-                                    {
-                                        ResmiGuncelle(base64Image);
-
-                                        // Alınan görseli arka planda diske önbelleğe kaydet
-                                        _ = ImageCacheManager.SaveImageAsync(dosyaAdi, base64Image);
-                                    }
+                                    ResmiGuncelleDosyadan(dosyaAdi, resimBase64Data);
+                                }
+                                else if (!string.IsNullOrEmpty(resimBase64Data))
+                                {
+                                    ResmiGuncelle(resimBase64Data);
+                                    _ = ImageCacheManager.SaveImageAsync(dosyaAdi, resimBase64Data);
                                 }
                             }
                             catch (JsonException ex)
@@ -631,11 +968,14 @@ namespace SseWpfApp
 
         private void SlideTimer_Tick(object? sender, EventArgs e)
         {
-            // Çevrimdışı modda slayt döngüsünü yerel zamanlayıcı yönetir
-            if (_isOffline)
+            // Sabitlenmiş veya durdurulmuş yayında ya da çevrimiçi modda asla yerel slaytı ilerletme
+            if (_isStreamPinned || _isStreamStopped || !_isOffline)
             {
-                SonrakiOfflineGorseliniGoster();
+                return;
             }
+
+            // Çevrimdışı modda slayt döngüsünü yerel zamanlayıcı yönetir
+            SonrakiOfflineGorseliniGoster();
         }
 
         private void SetStreamStopped(bool stopped)
@@ -686,6 +1026,7 @@ namespace SseWpfApp
                 imgCanli.Source = null;
                 imgCanli.Opacity = 1.0;
                 imgCanli.Visibility = Visibility.Visible;
+                if (StandbyPanel != null) StandbyPanel.Visibility = Visibility.Visible;
             }));
         }
 
@@ -701,7 +1042,7 @@ namespace SseWpfApp
 
                 Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(() =>
                 {
-                    if (!_slideTimer.IsEnabled)
+                    if (!_isStreamPinned && !_isStreamStopped && !_slideTimer.IsEnabled)
                     {
                         _slideTimer.Start();
                     }
@@ -716,6 +1057,14 @@ namespace SseWpfApp
             {
                 Logger.LogInfo("Sunucu bağlantısı yeniden sağlandı. Çevrimiçi canlı yayın devralındı.");
                 EkranaYazdir("[ÇEVRİMİÇİ MOD] Sunucu yayını aktif.");
+
+                Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(() =>
+                {
+                    if (_slideTimer.IsEnabled)
+                    {
+                        _slideTimer.Stop();
+                    }
+                }));
             }
         }
 
@@ -791,9 +1140,12 @@ namespace SseWpfApp
                 if (_slideTimer.Interval == yeniInterval)
                     return;
 
-                _slideTimer.Stop();
                 _slideTimer.Interval = yeniInterval;
-                _slideTimer.Start();
+                if (_isOffline && !_isStreamPinned && !_isStreamStopped)
+                {
+                    _slideTimer.Stop();
+                    _slideTimer.Start();
+                }
                 EkranaYazdir($"Slayt süresi güncellendi: {yeniInterval.TotalSeconds:0}sn");
             }
 
@@ -803,7 +1155,7 @@ namespace SseWpfApp
                 Dispatcher.BeginInvoke(Uygula);
         }
 
-        private void UygulaKioskIdleTimeout(int saniye)
+        private void UygulaBostaKalmaZamanAsimi(int saniye)
         {
             if (saniye < 1 || saniye > 86400)
                 return;
@@ -1000,61 +1352,45 @@ namespace SseWpfApp
 
         private int _videoPlayVersion = 0;
 
-        private void VideoyuGuncelle(string dosyaAdi)
+        private async void VideoyuGuncelle(string dosyaAdi, double startOffsetSec = 0)
         {
-            Dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(() =>
+            try
             {
-                try
+                int version = ++_videoPlayVersion;
+                _videoStartOffsetSec = Math.Max(0, startOffsetSec);
+
+                // 1. Videonun yerel diskte olduğundan emin ol (Kesinlikle canlı ağdan akış yapılmaz!)
+                string? localPath = await ImageCacheManager.EnsureFileDownloadedAsync(ServerUrl, dosyaAdi);
+
+                // Eğer beklerken başka bir video veya slayta geçildiyse işlemi durdur
+                if (version != _videoPlayVersion) return;
+
+                if (string.IsNullOrEmpty(localPath) || !System.IO.File.Exists(localPath))
                 {
-                    int version = ++_videoPlayVersion;
-                    string localPath = System.IO.Path.Combine(ImageCacheManager.CacheDirectory, dosyaAdi);
-                    Uri videoUri;
+                    Logger.LogError($"[Video Oynatıcı] Video yerel diske indirilemedi: {dosyaAdi}. Siyah ekran verilmiyor, mevcut görsel korunuyor.");
+                    return;
+                }
 
-                    if (System.IO.File.Exists(localPath) && new System.IO.FileInfo(localPath).Length > 0)
-                    {
-                        videoUri = new Uri(localPath, UriKind.Absolute);
-                    }
-                    else
-                    {
-                        string baseUri = ServerUrl;
-                        try
-                        {
-                            var u = new Uri(ServerUrl);
-                            baseUri = u.GetLeftPart(UriPartial.Authority);
-                        }
-                        catch { }
-                        string remoteUrl = $"{baseUri.TrimEnd('/')}/images/{Uri.EscapeDataString(dosyaAdi)}";
-                        videoUri = new Uri(remoteUrl, UriKind.Absolute);
-                    }
+                Dispatcher.Invoke(() =>
+                {
+                    if (version != _videoPlayVersion) return;
 
-                    // Siyah ekran oluşmaması ve videonun beklemeden başlaması için:
-                    // Önceki görseli hemen gizlemiyoruz, video ilk karesini hazırlayınca (MediaOpened)
-                    // görseli kapatıp videoyu öne çıkarıyoruz.
+                    var videoUri = new Uri(localPath, UriKind.Absolute);
+
+                    if (StandbyPanel != null) StandbyPanel.Visibility = Visibility.Collapsed;
                     mediaVideo.Stop();
                     mediaVideo.Source = videoUri;
                     mediaVideo.Volume = 0;
                     mediaVideo.IsMuted = true;
                     mediaVideo.Play();
 
-                    // Güvenlik zamanlayıcısı: Eğer MediaOpened gecikirse videoyu ekrana al
-                    var fallbackTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
-                    fallbackTimer.Tick += (s, e) =>
-                    {
-                        fallbackTimer.Stop();
-                        if (version == _videoPlayVersion && mediaVideo.Visibility != Visibility.Visible)
-                        {
-                            MediaVideo_MediaOpened(mediaVideo, new RoutedEventArgs());
-                        }
-                    };
-                    fallbackTimer.Start();
-
-                    Logger.LogInfo($"[Video Oynatıcı] Video oynatılıyor (Sessiz): {dosyaAdi}");
-                }
-                catch (Exception ex)
-                {
-                    Logger.LogError($"[Video Oynatıcı] Video başlatılırken hata: {dosyaAdi}", ex);
-                }
-            }));
+                    Logger.LogInfo($"[Video Oynatıcı] Video yerel diskten oynatılıyor: {dosyaAdi}");
+                });
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError($"[Video Oynatıcı] Video yerel diskten başlatılırken hata: {dosyaAdi}", ex);
+            }
         }
 
         private void MediaVideo_MediaOpened(object sender, RoutedEventArgs e)
@@ -1065,6 +1401,13 @@ namespace SseWpfApp
                 {
                     mediaVideo.Visibility = Visibility.Visible;
                     mediaVideo.Opacity = 1.0;
+
+                    if (_videoStartOffsetSec > 0.5)
+                    {
+                        mediaVideo.Position = TimeSpan.FromSeconds(_videoStartOffsetSec);
+                        _videoStartOffsetSec = 0;
+                    }
+
                     mediaVideo.Play();
 
                     // Video açılıp ilk kare hazır olunca önceki görseli temizle (artık bellekte veya ekranda eski resim kalmaz)
@@ -1081,6 +1424,17 @@ namespace SseWpfApp
         {
             try
             {
+                if (_isStreamPinned)
+                {
+                    // Sabitlenmiş videoyu baştan döngüye al
+                    Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(() =>
+                    {
+                        mediaVideo.Position = TimeSpan.Zero;
+                        mediaVideo.Play();
+                    }));
+                    return;
+                }
+
                 mediaVideo.Pause();
                 if (_isOffline)
                 {
@@ -1095,17 +1449,13 @@ namespace SseWpfApp
 
         private void MediaVideo_MediaFailed(object? sender, ExceptionRoutedEventArgs e)
         {
-            Logger.LogError($"[Video Oynatıcı] Video oynatılamadı: {e.ErrorException?.Message}", e.ErrorException);
+            Logger.LogError($"[Video Oynatıcı] Video yerel diskten oynatılamadı: {e.ErrorException?.Message}", e.ErrorException);
             Dispatcher.BeginInvoke(new Action(() =>
             {
                 mediaVideo.Visibility = Visibility.Collapsed;
                 mediaVideo.Source = null;
-                imgCanli.Visibility = Visibility.Visible;
-                imgCanli.Opacity = 1.0;
-                if (_isOffline)
-                {
-                    SonrakiOfflineGorseliniGoster();
-                }
+                // Asla siyah ekranda bırakma, yerel diskteki bir sonraki görseli göster
+                SonrakiOfflineGorseliniGoster();
             }));
         }
 
@@ -1130,6 +1480,10 @@ namespace SseWpfApp
                     int surum = ++_resimAnimasyonSurum;
                     TimeSpan fadeSuresi = FadeSuresiAl();
                     TimeSpan doubleFade = TimeSpan.FromMilliseconds(fadeSuresi.TotalMilliseconds * 2);
+
+                    // Her zaman görsel ekranını görünür kıl ve bekleme panelini gizle
+                    imgCanli.Visibility = Visibility.Visible;
+                    if (StandbyPanel != null) StandbyPanel.Visibility = Visibility.Collapsed;
 
                     // EĞER VİDEODAN RESME GEÇİLİYORSA:
                     // Eski resmi hiç devreye sokmadan doğrudan yeni resmi videonun dondurulmuş son karesi üstüne açıyoruz!
@@ -1168,30 +1522,18 @@ namespace SseWpfApp
                         return;
                     }
 
-                    // NORMAL RESİMDEN RESME GEÇİŞ
-                    if (_transitionEffect == "none")
+                    // NORMAL RESİMDEN RESME GEÇİŞ VEYA İLK AÇILIŞ
+                    if (_transitionEffect == "none" || imgCanli.Source == null)
                     {
                         imgCanli.BeginAnimation(UIElement.OpacityProperty, null);
-                        imgCanli.Opacity = 1.0;
                         imgCanli.Source = yeniBitmap;
+                        imgCanli.Opacity = 1.0;
                         return;
                     }
 
                     // Ensure no lingering animations and start from fully visible
                     imgCanli.BeginAnimation(UIElement.OpacityProperty, null);
                     imgCanli.Opacity = 1.0;
-
-                    if (imgCanli.Source == null)
-                    {
-                        // No current image: directly show new image with fade-in
-                        imgCanli.Source = yeniBitmap;
-                        imgCanli.Opacity = 0.0;
-                        imgCanli.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0.0, 1.0, doubleFade)
-                        {
-                            EasingFunction = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut }
-                        });
-                        return;
-                    }
 
                     // Fade-out from fully visible to fully transparent (double duration)
                     var fadeOut = new DoubleAnimation(1.0, 0.0, doubleFade)

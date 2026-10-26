@@ -9,6 +9,16 @@
         PreviewKeyDown="Window_PreviewKeyDown">
 
     <Grid>
+        <!-- Boşta / Yayın Akışı Bekleme Paneli (Hiçbir görsel yokken siyah ekran kalmasını önleyen zarif bekleme ekranı) -->
+        <Grid x:Name="StandbyPanel" Visibility="Visible" Background="#060913">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Border Background="#1E293B" CornerRadius="12" Padding="24,10" HorizontalAlignment="Center" Margin="0,0,0,16">
+                    <TextBlock Text="IdleBoard" Foreground="#38BDF8" FontSize="22" FontWeight="Bold"/>
+                </Border>
+                <TextBlock x:Name="TxtStandbyText" Text="Yayın Akışı Bekleniyor..." Foreground="#64748B" FontSize="15" FontWeight="Medium" HorizontalAlignment="Center"/>
+            </StackPanel>
+        </Grid>
+
         <!-- Resim Ekranın Tamamını Kaplar -->
         <Image x:Name="imgCanli" 
                Stretch="Uniform" 
@@ -75,6 +85,18 @@
                        VerticalAlignment="Center"/>
             </Grid>
         </Border>
+
+        <!-- Açılış Eşitleme / Yükleniyor Ekranı -->
+        <Grid x:Name="LoadingOverlay" Background="#0A0F1D" Visibility="Visible">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="520">
+                <Border Background="#1E293B" CornerRadius="8" Padding="14,6" HorizontalAlignment="Center" Margin="0,0,0,24">
+                    <TextBlock Text="IdleBoard" Foreground="#38BDF8" FontSize="15" FontWeight="Bold"/>
+                </Border>
+                <ProgressBar x:Name="LoadingProgressBar" IsIndeterminate="True" Width="280" Height="6" Foreground="#38BDF8" Background="#1E293B" BorderThickness="0" Margin="0,0,0,24"/>
+                <TextBlock x:Name="TxtLoadingTitle" Text="Veriler alınıyor..." Foreground="White" FontSize="24" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,10"/>
+                <TextBlock x:Name="TxtLoadingStatus" Text="Sunucu ile eşitleniyor, lütfen bekleyin..." Foreground="#94A3B8" FontSize="14" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"/>
+            </StackPanel>
+        </Grid>
 
     </Grid>
 </Window>

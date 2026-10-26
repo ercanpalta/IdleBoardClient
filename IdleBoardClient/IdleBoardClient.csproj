@@ -11,6 +11,10 @@
     <Version>1.0.0</Version>
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
     <FileVersion>1.0.0.0</FileVersion>
+    <Company>IdleBoard</Company>
+    <Product>IdleBoard Client</Product>
+    <Description>IdleBoard Dijital Ekran Yayin Istemcisi</Description>
+    <Copyright>Copyright (C) 2026 Ercan Palta</Copyright>
   </PropertyGroup>
 
   <ItemGroup>

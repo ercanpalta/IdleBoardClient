@@ -18,7 +18,69 @@ namespace IdleBoardClient
     public static class ImageCacheManager
     {
         private static readonly object _lockObj = new object();
-        public static readonly string CacheDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "cache");
+        public static readonly string CacheDirectory = InitializeCacheDirectory();
+
+        private static string InitializeCacheDirectory()
+        {
+            try
+            {
+                // Standart Windows Kullanıcı Veri Alanı (%LOCALAPPDATA%\IdleBoardClient\cache)
+                // Her Windows kullanıcısı için (yönetici olmasa bile) kesinlikle tam yazma izinlidir.
+                string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                string appDataDir = Path.Combine(localAppData, "IdleBoardClient", "cache");
+                if (!Directory.Exists(appDataDir))
+                {
+                    Directory.CreateDirectory(appDataDir);
+                }
+
+                // Eski konfigürasyondan (AppDomain BaseDirectory\cache) kalan dosyalar varsa yeni konuma taşı
+                string legacyDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "cache");
+                if (Directory.Exists(legacyDir) && !string.Equals(legacyDir, appDataDir, StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        foreach (var f in Directory.GetFiles(legacyDir))
+                        {
+                            string target = Path.Combine(appDataDir, Path.GetFileName(f));
+                            if (!File.Exists(target))
+                            {
+                                File.Copy(f, target, true);
+                            }
+                        }
+                    }
+                    catch { }
+                }
+
+                return appDataDir;
+            }
+            catch
+            {
+                string fallback = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "cache");
+                try { Directory.CreateDirectory(fallback); } catch { }
+                return fallback;
+            }
+        }
+
+        public static string ExtractBaseAuthority(string? url)
+        {
+            if (string.IsNullOrWhiteSpace(url)) return "http://127.0.0.1:3000";
+            string clean = url.Trim();
+            if (!clean.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+                !clean.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                clean = "http://" + clean;
+            }
+            try
+            {
+                var uri = new Uri(clean);
+                return uri.GetLeftPart(UriPartial.Authority);
+            }
+            catch
+            {
+                int slashIdx = clean.IndexOf('/', 8);
+                return slashIdx > 0 ? clean.Substring(0, slashIdx) : clean;
+            }
+        }
 
         private static readonly HashSet<string> DesteklenenUzantilar = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -102,13 +164,17 @@ namespace IdleBoardClient
         /// <summary>
         /// Sunucudaki aktif yayın görsel listesi ile yerel disk önbelleğini senkronize eder.
         /// Sunucuda artık yayında veya mevcut olmayan eski görseller önbellekten silinir.
-        /// Eksik olan yayındaki görseller sunucudan doğrudan HTTP ile indirilip önbelleğe alınır.
+        /// Eksik olan yayındaki görseller ve videolar sunucudan doğrudan indirilip yerel diske kaydedilir.
         /// </summary>
-        public static async Task SyncActiveImagesAsync(string serverBaseUrl, IReadOnlyList<string> activeFileNames, CancellationToken ct = default)
+        public static async Task<bool> SyncActiveImagesAsync(
+            string serverBaseUrl,
+            IReadOnlyList<string> activeFileNames,
+            Action<int, int, string>? onProgress = null,
+            CancellationToken ct = default)
         {
-            if (activeFileNames == null) return;
+            if (activeFileNames == null) return false;
 
-            await Task.Run(async () =>
+            return await Task.Run(async () =>
             {
                 lock (_lockObj)
                 {
@@ -145,18 +211,16 @@ namespace IdleBoardClient
                     Logger.LogError("[Önbellek Temizleme] Önbellek dizini taranırken hata.", ex);
                 }
 
-                if (activeFileNames.Count == 0) return;
+                if (activeFileNames.Count == 0) return true;
 
-                // 2. ADIM: Önbellekte eksik olan aktif görselleri HTTP üzerinden hızlıca ön-yükle (Pre-fetch)
-                string baseUriString = serverBaseUrl;
-                try
-                {
-                    var uri = new Uri(serverBaseUrl);
-                    baseUriString = uri.GetLeftPart(UriPartial.Authority);
-                }
-                catch { }
+                // 2. ADIM: Önbellekte eksik olan aktif görselleri ve videoları HTTP üzerinden yerel diske indir
+                string baseUriString = ExtractBaseAuthority(serverBaseUrl);
 
-                using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+                // Büyük video ve yüksek çözünürlüklü görseller için geniş zaman aşımı (120 saniye)
+                using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(120) };
+
+                int totalCount = activeFileNames.Count;
+                int currentCount = 0;
 
                 foreach (var fileName in activeFileNames)
                 {
@@ -164,30 +228,36 @@ namespace IdleBoardClient
                     if (string.IsNullOrWhiteSpace(fileName)) continue;
 
                     string localPath = Path.Combine(CacheDirectory, fileName);
+                    bool alreadyExists = false;
+
                     if (File.Exists(localPath))
                     {
                         var fi = new FileInfo(localPath);
                         if (fi.Length > 0)
                         {
-                            continue;
+                            alreadyExists = true;
                         }
                     }
 
-                    try
+                    if (!alreadyExists)
                     {
-                        string downloadUrl = $"{baseUriString.TrimEnd('/')}/images/{Uri.EscapeDataString(fileName)}";
-                        var response = await httpClient.GetAsync(downloadUrl, ct).ConfigureAwait(false);
-                        if (response.IsSuccessStatusCode)
+                        try
                         {
-                            byte[] bytes = await response.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
-                            if (bytes.Length > 0)
+                            string downloadUrl = $"{baseUriString.TrimEnd('/')}/images/{Uri.EscapeDataString(fileName)}";
+                            var response = await httpClient.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+                            if (response.IsSuccessStatusCode)
                             {
                                 string tempPath = localPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
                                 try
                                 {
-                                    await File.WriteAllBytesAsync(tempPath, bytes, ct).ConfigureAwait(false);
+                                    using (var sourceStream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false))
+                                    using (var destStream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None, 81920, true))
+                                    {
+                                        await sourceStream.CopyToAsync(destStream, ct).ConfigureAwait(false);
+                                    }
+
                                     File.Move(tempPath, localPath, overwrite: true);
-                                    Logger.LogInfo($"[Önbellek Ön-Yükleme] Eksik dosya önbelleğe kaydedildi: {fileName} ({bytes.Length / 1024} KB)");
+                                    Logger.LogInfo($"[Önbellek Ön-Yükleme] Dosya diske indirildi: {fileName}");
                                 }
                                 catch (Exception writeEx)
                                 {
@@ -196,13 +266,70 @@ namespace IdleBoardClient
                                 }
                             }
                         }
+                        catch (Exception ex) when (!ct.IsCancellationRequested)
+                        {
+                            Logger.LogError($"[Önbellek Ön-Yükleme] Dosya indirilemedi: {fileName}", ex);
+                        }
                     }
-                    catch (Exception ex) when (!ct.IsCancellationRequested)
+
+                    currentCount++;
+                    onProgress?.Invoke(currentCount, totalCount, fileName);
+                }
+
+                return true;
+            }, ct).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Belirli bir dosyanın yerel diskte bulunduğundan emin olur; eksikse sunucudan hemen indirir.
+        /// Asla doğrudan ağdan akış oynatılmaz, dosya mutlaka önce diske indirilir.
+        /// </summary>
+        public static async Task<string?> EnsureFileDownloadedAsync(string serverBaseUrl, string fileName, CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(fileName)) return null;
+
+            OnbellekKlasorunuOlustur();
+            string localPath = Path.Combine(CacheDirectory, fileName);
+
+            if (File.Exists(localPath) && new FileInfo(localPath).Length > 0)
+            {
+                return localPath;
+            }
+
+            try
+            {
+                string baseUriString = ExtractBaseAuthority(serverBaseUrl);
+                string downloadUrl = $"{baseUriString.TrimEnd('/')}/images/{Uri.EscapeDataString(fileName)}";
+                using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(120) };
+                var response = await httpClient.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+                if (response.IsSuccessStatusCode)
+                {
+                    string tempPath = localPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+                    try
                     {
-                        Logger.LogError($"[Önbellek Ön-Yükleme] Görsel indirilemedi: {fileName}", ex);
+                        using (var sourceStream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false))
+                        using (var destStream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None, 81920, true))
+                        {
+                            await sourceStream.CopyToAsync(destStream, ct).ConfigureAwait(false);
+                        }
+
+                        File.Move(tempPath, localPath, overwrite: true);
+                        Logger.LogInfo($"[Önbellek] Dosya talep üzerine diske kaydedildi: {fileName}");
+                        return localPath;
+                    }
+                    catch (Exception ex)
+                    {
+                        try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { }
+                        Logger.LogError($"[Önbellek] Dosya diske yazılamadı: {fileName}", ex);
                     }
                 }
-            }, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError($"[Önbellek] Dosya indirilirken hata: {fileName}", ex);
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -314,7 +441,7 @@ namespace IdleBoardClient
             });
         }
 
-        public static readonly string WatermarkCachePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "watermark_cached.png");
+        public static readonly string WatermarkCachePath = Path.Combine(CacheDirectory, "watermark_cached.png");
 
         public static async Task SaveWatermarkImageAsync(string? base64Data)
         {

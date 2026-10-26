@@ -1,5 +1,6 @@
 using IdleBoardClient;
 using System;
+using System.Threading.Tasks;
 using System.Windows;
 
 namespace SseWpfApp
@@ -20,6 +21,39 @@ namespace SseWpfApp
             txtServerUrl.Text = mevcutUrl;
         }
 
+        private async void btnOtomatikBul_Click(object sender, RoutedEventArgs e)
+        {
+            btnOtomatikBul.IsEnabled = false;
+            btnOtomatikBul.Content = "⏳ Aranıyor...";
+
+            try
+            {
+                var discovered = await ServerDiscoveryService.DiscoverServerAsync(TimeSpan.FromSeconds(2.5));
+                if (discovered != null)
+                {
+                    txtServerUrl.Text = discovered.EventsUrl;
+                    System.Windows.MessageBox.Show(
+                        $"Sunucu yerel ağda başarıyla bulundu!\n\nAdres: {discovered.ServerUrl}\nCihaz: {discovered.Hostname}",
+                        "Sunucu Bulundu",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                }
+                else
+                {
+                    System.Windows.MessageBox.Show(
+                        "Yerel ağda aktif bir IdleBoard sunucusu bulunamadı.\n\nLütfen sunucu bilgisayarının açık ve aynı ağa bağlı olduğundan emin olun.",
+                        "Sunucu Bulunamadı",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                }
+            }
+            finally
+            {
+                btnOtomatikBul.IsEnabled = true;
+                btnOtomatikBul.Content = "🔍 Otomatik Bul";
+            }
+        }
+
         private void btnKaydet_Click(object sender, RoutedEventArgs e)
         {
             string girilenUrl = txtServerUrl.Text.Trim();
@@ -31,8 +65,8 @@ namespace SseWpfApp
                 return;
             }
 
-            ServerUrl = girilenUrl;
-            Logger.LogInfo($"Sunucu adresi güncellendi: {girilenUrl}");
+            ServerUrl = ServerDiscoveryService.NormalizeEventsUrl(girilenUrl);
+            Logger.LogInfo($"Sunucu adresi güncellendi: {ServerUrl}");
 
             // Auto-Start ayarını uygula
             bool autoStartDurum = ChkAutoStart.IsChecked ?? false;

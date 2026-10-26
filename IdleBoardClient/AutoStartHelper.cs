@@ -1,11 +1,11 @@
-﻿using Microsoft.Win32;
+using Microsoft.Win32;
 using System;
 using System.Reflection;
 
 public static class AutoStartHelper
 {
     private const string RunRegistryKeyPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
-    private static readonly string AppName = "WpfKioskBillboard"; // Registry'de görünecek kayıt adı
+    private static readonly string AppName = "IdleBoardClient"; // Registry'de görünecek kayıt adı
 
     /// <summary>
     /// Uygulamanın Windows başlangıcına eklenip eklenmediğini kontrol eder.
@@ -37,10 +37,8 @@ public static class AutoStartHelper
 
             if (aktifEt)
             {
-                // Çalışan .exe dosyasının tam yolunu alıyoruz
-                string exePath = Assembly.GetExecutingAssembly().Location;
-
-                // .NET Core / .NET 8 için .dll yerine .exe yolunu garantiye almak
+                // Çalışan .exe dosyasının tam yolunu alıyoruz (Single-file uyumlu)
+                string exePath = Environment.ProcessPath ?? System.IO.Path.Combine(AppContext.BaseDirectory, "IdleBoardClient.exe");
                 if (exePath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
                 {
                     exePath = exePath.Substring(0, exePath.Length - 4) + ".exe";

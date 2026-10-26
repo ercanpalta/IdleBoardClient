@@ -4,7 +4,27 @@ using System.IO;
 public static class Logger
 {
     private static readonly object _lockObj = new object();
-    private static readonly string LogFolderPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs");
+    private static readonly string LogFolderPath = InitializeLogFolder();
+
+    private static string InitializeLogFolder()
+    {
+        try
+        {
+            string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            string logDir = Path.Combine(localAppData, "IdleBoardClient", "logs");
+            if (!Directory.Exists(logDir))
+            {
+                Directory.CreateDirectory(logDir);
+            }
+            return logDir;
+        }
+        catch
+        {
+            string fallback = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs");
+            try { Directory.CreateDirectory(fallback); } catch { }
+            return fallback;
+        }
+    }
 
     public static void LogError(string message, Exception? ex = null)
     {
