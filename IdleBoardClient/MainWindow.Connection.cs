@@ -326,8 +326,9 @@ namespace SseWpfApp
                     // 2. Durum: Bağlantı Başarılı (Yeşil İkon)
                     DurumIconGuncelle(BaglantiDurumu.Bagli);
 
-                    // Başarılı bağlantı kurulduğunda bekleme süresini varsayılana sıfırla
-                    retryDelaySeconds = 2;
+                    // Bekleme süresi, bağlantı en az 10 sn ayakta kalıp veri akınca sıfırlanır (kısa ömürlü bağlantılar geri çekilmeyi bozmasın)
+                    var baglantiSayaci = System.Diagnostics.Stopwatch.StartNew();
+                    bool beklemeSifirlandi = false;
 
                     while (!cancellationToken.IsCancellationRequested)
                     {
@@ -357,6 +358,11 @@ namespace SseWpfApp
                         if (string.IsNullOrWhiteSpace(line))
                             continue;
 
+                        if (!beklemeSifirlandi && baglantiSayaci.Elapsed >= TimeSpan.FromSeconds(10))
+                        {
+                            beklemeSifirlandi = true;
+                            retryDelaySeconds = 2;
+                        }
                         // Sunucudan gelen keep-alive / ping yorum satırlarını işle
                         if (line.StartsWith(":", StringComparison.Ordinal))
                             continue;
