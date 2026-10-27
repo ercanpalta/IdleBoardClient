@@ -227,7 +227,12 @@ namespace IdleBoardClient
                     if (ct.IsCancellationRequested) break;
                     if (string.IsNullOrWhiteSpace(fileName)) continue;
 
-                    string localPath = Path.Combine(CacheDirectory, fileName);
+                    string? localPath = ResolveCachePath(fileName);
+                    if (localPath == null)
+                    {
+                        Logger.LogInfo($"[Önbellek] Geçersiz dosya adı atlandı: {fileName}");
+                        continue;
+                    }
                     bool alreadyExists = false;
 
                     if (File.Exists(localPath))
@@ -289,7 +294,12 @@ namespace IdleBoardClient
             if (string.IsNullOrWhiteSpace(fileName)) return null;
 
             OnbellekKlasorunuOlustur();
-            string localPath = Path.Combine(CacheDirectory, fileName);
+            string? localPath = ResolveCachePath(fileName);
+            if (localPath == null)
+            {
+                Logger.LogInfo($"[Önbellek] Geçersiz dosya adı reddedildi: {fileName}");
+                return null;
+            }
 
             if (File.Exists(localPath) && new FileInfo(localPath).Length > 0)
             {
@@ -371,6 +381,19 @@ namespace IdleBoardClient
             {
                 return 0;
             }
+        }
+
+        private static string? ResolveCachePath(string? fileName)
+        {
+            if (string.IsNullOrWhiteSpace(fileName)) return null;
+            string clean = Path.GetFileName(fileName);
+            if (string.IsNullOrWhiteSpace(clean) || !string.Equals(clean, fileName, StringComparison.Ordinal)) return null;
+            if (clean.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0) return null;
+            if (!DesteklenenUzantilar.Contains(Path.GetExtension(clean))) return null;
+
+            string full = Path.GetFullPath(Path.Combine(CacheDirectory, clean));
+            string root = Path.GetFullPath(CacheDirectory).TrimEnd('\\', '/') + Path.DirectorySeparatorChar;
+            return full.StartsWith(root, StringComparison.OrdinalIgnoreCase) ? full : null;
         }
 
         private static string GuvenliDosyaAdiUret(string? fileName, byte[] data)
