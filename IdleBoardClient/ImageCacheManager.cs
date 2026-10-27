@@ -288,6 +288,13 @@ namespace IdleBoardClient
                     onProgress?.Invoke(currentCount, totalCount, fileName);
                 }
 
+                // Başarı: iptal edilmedi ve tüm aktif dosyalar diskte mevcut
+                if (ct.IsCancellationRequested) return false;
+                foreach (var name in activeFileNames)
+                {
+                    string? p = ResolveCachePath(name);
+                    if (p == null || !File.Exists(p) || new FileInfo(p).Length == 0) return false;
+                }
                 return true;
             }, ct).ConfigureAwait(false);
         }

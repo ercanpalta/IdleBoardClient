@@ -138,7 +138,7 @@ namespace SseWpfApp
                 TxtLoadingStatus.Text = $"{activeList.Count} adet medya dosyası sunucu ile eşitleniyor...";
             });
 
-            await ImageCacheManager.SyncActiveImagesAsync(ServerUrl, activeList, (current, total, file) =>
+            bool syncOk = await ImageCacheManager.SyncActiveImagesAsync(ServerUrl, activeList, (current, total, file) =>
             {
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
@@ -146,7 +146,11 @@ namespace SseWpfApp
                 }));
             }, ct);
 
-            _isInitialSyncCompleted = true;
+            if (ct.IsCancellationRequested) return;
+
+            // Eksik dosya kaldıysa bayrak kurulmaz; sonraki sunucu mesajında eşitleme yeniden denenir
+            _isInitialSyncCompleted = syncOk;
+            if (!syncOk) Logger.LogInfo("[Eşitleme] Bazı dosyalar indirilemedi, sonraki mesajda yeniden denenecek.");
 
             // Eşitleme bittiğinde sunucu yayın akışında o an hangi görsel/video varsa doğrudan onu diskten ekrana getir
             bool gosterildi = false;
