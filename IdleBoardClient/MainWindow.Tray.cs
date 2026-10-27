@@ -211,6 +211,9 @@ namespace SseWpfApp
 
         private void UygulamayiTamamenKapat()
         {
+            // SSE dinleyicisini durdur; arka plan görevi uygulama kapanırken sürmesin
+            _sseCancellationTokenSource?.Cancel();
+
             // Tray Icon'u bellekten temizle ve kapat
             _notifyIcon.Visible = false;
             _notifyIcon.Dispose();
