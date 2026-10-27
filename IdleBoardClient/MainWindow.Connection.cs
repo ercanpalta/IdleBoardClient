@@ -635,9 +635,11 @@ namespace SseWpfApp
                                     _ = ImageCacheManager.SaveImageAsync(dosyaAdi, resimBase64Data);
                                 }
                             }
-                            catch (JsonException ex)
+                            catch (Exception ex) when (ex is not OperationCanceledException)
                             {
-                                EkranaYazdir($"[JSON PARSE HATASI] {ex.Message}");
+                                // Hatalı tipli/eksik alan tek bir mesajı atlatır; SSE bağlantısı kopmaz
+                                EkranaYazdir($"[MESAJ İŞLEME HATASI] {ex.GetType().Name}: {ex.Message}");
+                                Logger.LogError("SSE mesajı işlenirken hata oluştu.", ex);
                             }
                         }
                     }
