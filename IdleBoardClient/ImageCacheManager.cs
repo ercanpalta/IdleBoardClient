@@ -184,31 +184,38 @@ namespace IdleBoardClient
                 var activeSet = new HashSet<string>(activeFileNames, StringComparer.OrdinalIgnoreCase);
 
                 // 1. ADIM: Artık sunucuda seçili olmayan eski önbellek dosyalarını temizle (Purge)
-                try
+                // Boş liste geçici bir sunucu/okuma sorunu olabilir; çevrimdışı slayt için mevcut önbellek korunur
+                if (activeSet.Count > 0)
                 {
-                    if (Directory.Exists(CacheDirectory))
+                    lock (_lockObj)
                     {
-                        var dir = new DirectoryInfo(CacheDirectory);
-                        foreach (var file in dir.GetFiles())
+                        try
                         {
-                            if (DesteklenenUzantilar.Contains(file.Extension) && !activeSet.Contains(file.Name))
+                            if (Directory.Exists(CacheDirectory))
                             {
-                                try
+                                var dir = new DirectoryInfo(CacheDirectory);
+                                foreach (var file in dir.GetFiles())
                                 {
-                                    file.Delete();
-                                    Logger.LogInfo($"[Önbellek Temizleme] Sunucuda seçili olmayan eski dosya silindi: {file.Name}");
-                                }
-                                catch (Exception ex)
-                                {
-                                    Logger.LogError($"[Önbellek Temizleme] Dosya silinirken hata: {file.Name}", ex);
+                                    if (DesteklenenUzantilar.Contains(file.Extension) && !activeSet.Contains(file.Name))
+                                    {
+                                        try
+                                        {
+                                            file.Delete();
+                                            Logger.LogInfo($"[Önbellek Temizleme] Sunucuda seçili olmayan eski dosya silindi: {file.Name}");
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            Logger.LogError($"[Önbellek Temizleme] Dosya silinirken hata: {file.Name}", ex);
+                                        }
+                                    }
                                 }
                             }
                         }
+                        catch (Exception ex)
+                        {
+                            Logger.LogError("[Önbellek Temizleme] Önbellek dizini taranırken hata.", ex);
+                        }
                     }
-                }
-                catch (Exception ex)
-                {
-                    Logger.LogError("[Önbellek Temizleme] Önbellek dizini taranırken hata.", ex);
                 }
 
                 if (activeFileNames.Count == 0) return true;
