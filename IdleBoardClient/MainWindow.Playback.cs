@@ -88,9 +88,26 @@ namespace SseWpfApp
             }));
         }
 
+        private void EnsureOfflineSlideTimerRunning()
+        {
+            Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(() =>
+            {
+                if (_isOffline && !_isStreamPinned && !_isStreamStopped && !_slideTimer.IsEnabled)
+                {
+                    _slideTimer.Start();
+                }
+            }));
+        }
+
         private void SetOfflineMode(bool offline)
         {
-            if (_isOffline == offline) return;
+            if (_isOffline == offline)
+            {
+                // _isOffline başlangıçta true olduğundan, ilk bağlantı denemesi başarısız olduğunda da
+                // yerel slayt zamanlayıcısının çalıştığından emin ol
+                if (offline) EnsureOfflineSlideTimerRunning();
+                return;
+            }
             _isOffline = offline;
 
             if (_isOffline)

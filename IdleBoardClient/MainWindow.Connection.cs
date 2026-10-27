@@ -99,6 +99,7 @@ namespace SseWpfApp
                             if (!_isInitialSyncCompleted)
                             {
                                 SonrakiOfflineGorseliniGoster();
+                                EnsureOfflineSlideTimerRunning();
                                 LoadingOverlay.Visibility = System.Windows.Visibility.Collapsed;
                             }
                         };
