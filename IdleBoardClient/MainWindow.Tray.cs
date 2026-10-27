@@ -214,14 +214,27 @@ namespace SseWpfApp
             // Tray Icon'u bellekten temizle ve kapat
             _notifyIcon.Visible = false;
             _notifyIcon.Dispose();
+            foreach (var icon in _durumIkonlari.Values) icon.Dispose();
+            _durumIkonlari.Clear();
             System.Windows.Application.Current.Shutdown();
         }
 
         [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Auto)]
         private static extern bool DestroyIcon(IntPtr handle);
 
-        // 16x16 piksel boyutunda dinamik renkli daire ikon oluşturur
+        // Durum ikonları yalnızca bir kez üretilip yeniden kullanılır; her durum değişiminde yeni GDI nesnesi sızdırılmaz
+        private readonly System.Collections.Generic.Dictionary<System.Drawing.Color, System.Drawing.Icon> _durumIkonlari = new();
+
         private System.Drawing.Icon OlusturDurumIkonu(System.Drawing.Color renk)
+        {
+            if (_durumIkonlari.TryGetValue(renk, out var cached)) return cached;
+            var icon = UretDurumIkonu(renk);
+            _durumIkonlari[renk] = icon;
+            return icon;
+        }
+
+        // 16x16 piksel boyutunda dinamik renkli daire ikon oluşturur
+        private System.Drawing.Icon UretDurumIkonu(System.Drawing.Color renk)
         {
             using var bitmap = new System.Drawing.Bitmap(16, 16);
             using (var g = System.Drawing.Graphics.FromImage(bitmap))
