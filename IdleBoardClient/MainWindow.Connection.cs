@@ -533,7 +533,7 @@ namespace SseWpfApp
                                 if ((root.TryGetProperty("displayIdleTimeout", out var idleElement) || root.TryGetProperty("idleTimeout", out idleElement) || root.TryGetProperty("kioskIdleTimeout", out idleElement))
                                     && idleElement.ValueKind == JsonValueKind.Number)
                                 {
-                                    UygulaBostaKalmaZamanAsimi(idleElement.GetInt32());
+                                    UygulaBostaKalmaZamanAsimi(idleElement.TryGetInt32(out int idleSn) ? idleSn : (int)Math.Round(idleElement.GetDouble()));
                                 }
 
                                 if (root.TryGetProperty("imageFit", out var fitElement)

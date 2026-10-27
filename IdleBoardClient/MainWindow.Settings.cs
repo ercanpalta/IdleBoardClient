@@ -53,6 +53,20 @@ namespace SseWpfApp
                 Dispatcher.BeginInvoke(Uygula);
         }
 
+        private static readonly object _ayarKayitKilidi = new();
+
+        // Disk yazımı SSE okuma iş parçacığını bloklamasın; eşzamanlı kayıtlar kilitle sıralanır
+        private static void AyariArkaPlandaKaydetImpl()
+        {
+            try
+            {
+                lock (_ayarKayitKilidi) { Settings.Default.Save(); }
+            }
+            catch (Exception ex) { Logger.LogError("Ayarlar kaydedilemedi", ex); }
+        }
+
+        private static void AyarlariArkaPlandaKaydet() => _ = Task.Run(AyariArkaPlandaKaydetImpl);
+
         private void UygulaBostaKalmaZamanAsimi(int saniye)
         {
             if (saniye < 1 || saniye > 86400)
@@ -63,7 +77,7 @@ namespace SseWpfApp
 
             IdleSuresiSaniye = saniye;
             Settings.Default.IdleTimeSeconds = saniye;
-            Settings.Default.Save();
+            AyarlariArkaPlandaKaydet();
 
             Logger.LogInfo($"Sunucudan boşta kalma süresi güncellendi: {saniye} saniye");
             EkranaYazdir($"Boşta kalma süresi güncellendi: {saniye}sn");
@@ -221,7 +235,7 @@ namespace SseWpfApp
 
             _transitionEffect = normalized;
             Settings.Default.TransitionEffect = normalized;
-            Settings.Default.Save();
+            AyarlariArkaPlandaKaydet();
 
             Logger.LogInfo($"Geçiş efekti güncellendi: {normalized}");
             EkranaYazdir($"Geçiş efekti: {normalized}");
@@ -238,7 +252,7 @@ namespace SseWpfApp
 
             _slideshowOrder = normalized;
             Settings.Default.SlideshowOrder = normalized;
-            Settings.Default.Save();
+            AyarlariArkaPlandaKaydet();
 
             Logger.LogInfo($"Slayt sıralaması güncellendi: {normalized}");
             EkranaYazdir($"Slayt sıralaması: {normalized}");
