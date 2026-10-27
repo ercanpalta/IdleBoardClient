@@ -72,6 +72,7 @@ namespace SseWpfApp
         private void MediaVideo_MediaOpened(object sender, RoutedEventArgs e)
         {
             int acilanSurum = _videoOpenVersion;
+            Interlocked.Exchange(ref _videoFailStreak, 0);
             Dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(() =>
             {
                 try
@@ -131,16 +132,23 @@ namespace SseWpfApp
             catch { }
         }
 
-        private void MediaVideo_MediaFailed(object? sender, ExceptionRoutedEventArgs e)
+        private int _videoFailStreak = 0;
+
+        private async void MediaVideo_MediaFailed(object? sender, ExceptionRoutedEventArgs e)
         {
             Logger.LogError($"[Video Oynatıcı] Video yerel diskten oynatılamadı: {e.ErrorException?.Message}", e.ErrorException);
-            Dispatcher.BeginInvoke(new Action(() =>
-            {
-                mediaVideo.Visibility = Visibility.Collapsed;
-                mediaVideo.Source = null;
-                // Asla siyah ekranda bırakma, yerel diskteki bir sonraki görseli göster
-                SonrakiOfflineGorseliniGoster();
-            }));
+            int streak = Interlocked.Increment(ref _videoFailStreak);
+            int surum = _videoPlayVersion;
+            mediaVideo.Visibility = Visibility.Collapsed;
+            mediaVideo.Source = null;
+
+            // Bozuk dosyada CPU'yu yormamak için art arda hatalarda sunucunun sonraki slaytı beklenir
+            if (streak > 3) return;
+            await Task.Delay(1000);
+            if (surum != _videoPlayVersion) return;
+
+            // Asla siyah ekranda bırakma, yerel diskteki bir sonraki görseli göster
+            SonrakiOfflineGorseliniGoster();
         }
     }
 }
