@@ -87,6 +87,8 @@ namespace SseWpfApp
                         // Zaman aşımı kurtarmasında bulunan adres kalıcı yazılmaz; bağlantı başarılı olursa kullanıcı ayarı değişmeden kalır
                         Logger.LogInfo($"[Zaman Aşımı Kurtarma] Ağdaki yeni sunucuya bağlanılıyor: {ServerUrl}");
                         SseBaslat();
+                        // Yeni adres de yanıt vermezse yükleme ekranı sonsuza dek kalmasın
+                        BaslatBaglantiZamanAsimiTakibi();
                         return;
                     }
 
