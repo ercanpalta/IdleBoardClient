@@ -179,8 +179,11 @@ namespace SseWpfApp
             void Uygula()
             {
                 _showWatermark = visible;
-                Settings.Default.ShowWatermark = visible;
-                Settings.Default.Save();
+                if (Settings.Default.ShowWatermark != visible)
+                {
+                    Settings.Default.ShowWatermark = visible;
+                    Settings.Default.Save();
+                }
                 GuncelleWatermarkGorunurluk();
             }
 
