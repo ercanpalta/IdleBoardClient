@@ -26,9 +26,13 @@ namespace SseWpfApp
     {
         private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
-            // 1. Kurulum sihirbazından veya Registry'den gelen adresi kontrol et
+            // 1. Kurulum sihirbazından veya Registry'den gelen adresi yalnızca henüz bir adres
+            // kaydedilmemişse (veya varsayılan localhost ise) uygula; kullanıcının ayarlardan girdiği adres ezilmesin
             string? configuredUrl = ServerDiscoveryService.GetConfiguredServerUrl();
-            if (!string.IsNullOrWhiteSpace(configuredUrl))
+            bool userUrlMissing = string.IsNullOrWhiteSpace(Settings.Default.ServerUrl)
+                || Settings.Default.ServerUrl.Contains("localhost", StringComparison.OrdinalIgnoreCase)
+                || Settings.Default.ServerUrl.Contains("127.0.0.1", StringComparison.OrdinalIgnoreCase);
+            if (!string.IsNullOrWhiteSpace(configuredUrl) && userUrlMissing)
             {
                 ServerUrl = configuredUrl;
                 Settings.Default.ServerUrl = ServerUrl;
