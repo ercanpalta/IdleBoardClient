@@ -489,6 +489,7 @@ namespace SseWpfApp
                                     }
                                     if (root.TryGetProperty("currentImage", out var curImgEl) && !string.IsNullOrEmpty(curImgEl.GetString()))
                                     {
+                                        string? oncekiYayin = _sonSunucuYayinDosyasi;
                                         _sonSunucuYayinDosyasi = curImgEl.GetString();
                                         _sonSunucuYayinVideoMu = root.TryGetProperty("isVideo", out var ivEl) && ivEl.GetBoolean();
                                         _videoStartOffsetSec = 0;
@@ -506,6 +507,20 @@ namespace SseWpfApp
                                             }
                                         }
                                         Logger.LogInfo($"[Init] Sunucu anlık yayın medyası: {_sonSunucuYayinDosyasi} (Video: {_sonSunucuYayinVideoMu}, Sabitli: {_isStreamPinned}, Offset: {_videoStartOffsetSec:0.0}s)");
+
+                                        // Yeniden bağlanmada eşitleme zaten tamamlanmıştır; sunucudaki güncel medya burada gösterilmelidir
+                                        string? yeniYayin = _sonSunucuYayinDosyasi;
+                                        bool yeniVideoMu = _sonSunucuYayinVideoMu;
+                                        double yeniOffset = _videoStartOffsetSec;
+                                        if (_isInitialSyncCompleted && !string.IsNullOrEmpty(yeniYayin)
+                                            && !string.Equals(oncekiYayin, yeniYayin, StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            Dispatcher.Invoke(() =>
+                                            {
+                                                if (yeniVideoMu) VideoyuGuncelle(yeniYayin, yeniOffset);
+                                                else ResmiGuncelleDosyadan(yeniYayin, null);
+                                            });
+                                        }
                                     }
                                 }
 
@@ -624,14 +639,6 @@ namespace SseWpfApp
 
                                 string? resimBase64Data = root.TryGetProperty("resimData", out var rDataEl) ? rDataEl.GetString() : null;
 
-                                // Sunucudan gelen yayın akışı bilgisini hafızada tut
-                                if (!string.IsNullOrEmpty(dosyaAdi) || !string.IsNullOrEmpty(resimBase64Data))
-                                {
-                                    _sonSunucuYayinDosyasi = dosyaAdi;
-                                    _sonSunucuYayinVideoMu = isVideo;
-                                    _sonSunucuYayinBase64 = resimBase64Data;
-                                }
-
                                 bool isIncomingPinned = root.TryGetProperty("isPinned", out var imgPinnedEl) && imgPinnedEl.GetBoolean();
 
                                 // Eğer ekranda sabitleme aktifse ve gelen mesaj sabitlenmiş bir medya DEĞİLSE:
@@ -639,6 +646,14 @@ namespace SseWpfApp
                                 if (_isStreamPinned && !isIncomingPinned)
                                 {
                                     continue;
+                                }
+
+                                // Sunucudan gelen yayın akışı bilgisini hafızada tut (yoksayılan slayt sabitli medyanın üzerine yazmasın)
+                                if (!string.IsNullOrEmpty(dosyaAdi) || !string.IsNullOrEmpty(resimBase64Data))
+                                {
+                                    _sonSunucuYayinDosyasi = dosyaAdi;
+                                    _sonSunucuYayinVideoMu = isVideo;
+                                    _sonSunucuYayinBase64 = resimBase64Data;
                                 }
 
                                 _isStreamPinned = isIncomingPinned;
