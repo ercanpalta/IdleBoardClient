@@ -38,6 +38,18 @@ namespace IdleBoardClient {
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         [global::System.Configuration.DefaultSettingValueAttribute("True")]
+        public bool UpgradeNeeded {
+            get {
+                return ((bool)(this["UpgradeNeeded"]));
+            }
+            set {
+                this["UpgradeNeeded"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("True")]
         public bool IsFirstRun {
             get {
                 return ((bool)(this["IsFirstRun"]));

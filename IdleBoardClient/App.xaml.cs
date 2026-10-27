@@ -9,9 +9,36 @@ namespace IdleBoardClient
     /// </summary>
     public partial class App : System.Windows.Application
     {
+        private Mutex? _singleInstanceMutex;
+
         protected override void OnStartup(StartupEventArgs e)
         {
+            // Tek örnek: aynı kullanıcı oturumunda ikinci kopya kiosk ekranında çakışmasın
+            _singleInstanceMutex = new Mutex(true, @"Local\IdleBoardClient_SingleInstance", out bool ilkOrnek);
+            if (!ilkOrnek)
+            {
+                _singleInstanceMutex.Dispose();
+                _singleInstanceMutex = null;
+                Shutdown();
+                return;
+            }
+
             base.OnStartup(e);
+
+            // Sürüm değişince user.config yolu değişir; önceki sürümün ayarlarını (ServerUrl, IsFirstRun...) taşı
+            try
+            {
+                if (IdleBoardClient.Settings.Default.UpgradeNeeded)
+                {
+                    IdleBoardClient.Settings.Default.Upgrade();
+                    IdleBoardClient.Settings.Default.UpgradeNeeded = false;
+                    IdleBoardClient.Settings.Default.Save();
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError("Ayarlar önceki sürümden taşınamadı", ex);
+            }
 
             // 1. UI Thread üzerindeki yakalanmayan hatalar
             this.DispatcherUnhandledException += (s, ev) =>
@@ -50,12 +77,19 @@ namespace IdleBoardClient
 
         protected override void OnExit(ExitEventArgs e)
         {
+            if (_singleInstanceMutex == null)
+            {
+                base.OnExit(e);
+                return;
+            }
             Logger.LogInfo("Uygulama Kapatıldı.");
 
             // Uygulama kapanırken Windows güç ayarlarını normale döndür
             PowerManagement.UykuModunuSerbestBirak();
 
             base.OnExit(e);
+            _singleInstanceMutex.ReleaseMutex();
+            _singleInstanceMutex.Dispose();
         }
     }
 

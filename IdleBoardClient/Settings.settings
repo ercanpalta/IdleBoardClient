@@ -5,6 +5,9 @@
     <Setting Name="ServerUrl" Type="System.String" Scope="User">
       <Value Profile="(Default)">http://localhost:3000/events</Value>
     </Setting>
+    <Setting Name="UpgradeNeeded" Type="System.Boolean" Scope="User">
+      <Value Profile="(Default)">True</Value>
+    </Setting>
     <Setting Name="IsFirstRun" Type="System.Boolean" Scope="User">
       <Value Profile="(Default)">True</Value>
     </Setting>
