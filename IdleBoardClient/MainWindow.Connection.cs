@@ -186,11 +186,13 @@ namespace SseWpfApp
 
         private async Task<bool> ResmiGuncelleDosyadanAsync(string dosyaAdi, string? base64Fallback)
         {
+            // Video ile ortak sürüm sayacı: bu istek sürerken daha yeni bir video/görsel istenirse sonuç uygulanmaz
+            int version = Interlocked.Increment(ref _videoPlayVersion);
             try
             {
                 // Önce görselin yerel diskte olduğundan emin ol (Canlı yayından doğrudan oynatma ASLA yapılmaz)
                 string? localPath = await ImageCacheManager.EnsureFileDownloadedAsync(ServerUrl, dosyaAdi);
-
+                if (version != _videoPlayVersion) return true;
                 if (!string.IsNullOrEmpty(localPath) && System.IO.File.Exists(localPath))
                 {
                     var bmp = ImageHelper.LoadBitmapFromFile(localPath);
@@ -205,6 +207,7 @@ namespace SseWpfApp
                 if (!string.IsNullOrEmpty(base64Fallback))
                 {
                     string? savedPath = await ImageCacheManager.SaveImageAsync(dosyaAdi, base64Fallback);
+                    if (version != _videoPlayVersion) return true;
                     if (!string.IsNullOrEmpty(savedPath) && System.IO.File.Exists(savedPath))
                     {
                         var bmp = ImageHelper.LoadBitmapFromFile(savedPath);

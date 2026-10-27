@@ -30,7 +30,7 @@ namespace SseWpfApp
         {
             try
             {
-                int version = ++_videoPlayVersion;
+                int version = Interlocked.Increment(ref _videoPlayVersion);
                 _videoStartOffsetSec = Math.Max(0, startOffsetSec);
 
                 // 1. Videonun yerel diskte olduğundan emin ol (Kesinlikle canlı ağdan akış yapılmaz!)
