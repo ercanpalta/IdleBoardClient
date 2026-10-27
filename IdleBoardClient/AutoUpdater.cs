@@ -32,10 +32,27 @@ namespace IdleBoardClient
                 return false;
 
             string host = uri.Host.ToLowerInvariant();
-            return host == "github.com"
-                || host == "api.github.com"
-                || host == "codeload.github.com"
-                || host.EndsWith(".githubusercontent.com", StringComparison.Ordinal);
+            string path = uri.AbsolutePath.ToLowerInvariant();
+            string repo = OfficialRepo.ToLowerInvariant();
+            return (host == "github.com" && path.StartsWith($"/{repo}/releases/download/", StringComparison.Ordinal))
+                || (host == "api.github.com" && path.StartsWith($"/repos/{repo}/", StringComparison.Ordinal));
+        }
+
+        private const string OfficialRepo = "ercanpalta/IdleBoardClient";
+
+        private static bool IsDirectoryWritable(string dir)
+        {
+            try
+            {
+                string probe = Path.Combine(dir, ".write_test_" + Path.GetRandomFileName());
+                File.WriteAllText(probe, "");
+                File.Delete(probe);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         public static async Task<bool> ApplyUpdateAsync(string downloadUrl, string targetVersion)
@@ -46,6 +63,18 @@ namespace IdleBoardClient
             if (!IsTrustedDownloadUrl(downloadUrl))
             {
                 Logger.LogInfo($"[Otomatik Güncelleme] Güvenilmeyen indirme adresi reddedildi: {downloadUrl}");
+                return false;
+            }
+
+            if (string.Equals(targetVersion?.TrimStart('v', 'V'), CurrentVersion, StringComparison.OrdinalIgnoreCase))
+            {
+                Logger.LogInfo($"[Otomatik Guncelleme] Hedef surum ({targetVersion}) zaten yuklu, guncelleme atlandi.");
+                return false;
+            }
+
+            if (!IsDirectoryWritable(AppDomain.CurrentDomain.BaseDirectory))
+            {
+                Logger.LogInfo("[Otomatik Guncelleme] Uygulama klasorune yazma izni yok; guncelleme atlandi (yonetici olarak yeniden kurulum gerekebilir).");
                 return false;
             }
 
