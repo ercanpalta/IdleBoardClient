@@ -95,6 +95,15 @@ namespace SseWpfApp
 
                     mediaVideo.Play();
 
+                    // Çevrimdışı slaytta zamanlayıcıyı sabit 65 sn yerine videonun gerçek süresine göre ayarla
+                    if (_isOffline && _slideTimer.IsEnabled && mediaVideo.NaturalDuration.HasTimeSpan)
+                    {
+                        double kalanSn = mediaVideo.NaturalDuration.TimeSpan.TotalSeconds - mediaVideo.Position.TotalSeconds;
+                        _slideTimer.Stop();
+                        _slideTimer.Interval = TimeSpan.FromSeconds(Math.Max(3, kalanSn + 1));
+                        _slideTimer.Start();
+                    }
+
                     // Video açılıp ilk kare hazır olunca önceki görseli temizle (artık bellekte veya ekranda eski resim kalmaz)
                     imgCanli.BeginAnimation(UIElement.OpacityProperty, null);
                     imgCanli.Opacity = 0.0;
