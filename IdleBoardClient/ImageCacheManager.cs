@@ -441,7 +441,25 @@ namespace IdleBoardClient
             });
         }
 
-        public static readonly string WatermarkCachePath = Path.Combine(CacheDirectory, "watermark_cached.png");
+        // Logo önbellek dizininin dışında tutulur; aksi halde senkronizasyon temizliği onu siler ve slayt olarak oynatılır
+        public static readonly string WatermarkCachePath = InitializeWatermarkPath();
+
+        private static string InitializeWatermarkPath()
+        {
+            string parentDir = Path.GetDirectoryName(CacheDirectory.TrimEnd('\\', '/')) ?? CacheDirectory;
+            string newPath = Path.Combine(parentDir, "watermark_cached.png");
+            try
+            {
+                string legacyPath = Path.Combine(CacheDirectory, "watermark_cached.png");
+                if (!string.Equals(legacyPath, newPath, StringComparison.OrdinalIgnoreCase) && File.Exists(legacyPath))
+                {
+                    if (!File.Exists(newPath)) File.Move(legacyPath, newPath);
+                    else File.Delete(legacyPath);
+                }
+            }
+            catch { }
+            return newPath;
+        }
 
         public static async Task SaveWatermarkImageAsync(string? base64Data)
         {
