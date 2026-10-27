@@ -68,11 +68,12 @@ namespace IdleBoardClient
                 using (var httpClient = new HttpClient { Timeout = TimeSpan.FromMinutes(5) })
                 {
                     httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("IdleBoardClient-Updater");
-                    using var response = await httpClient.GetAsync(downloadUrl).ConfigureAwait(false);
+                    using var response = await httpClient.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
                     response.EnsureSuccessStatusCode();
 
-                    byte[] zipBytes = await response.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
-                    await File.WriteAllBytesAsync(zipPath, zipBytes).ConfigureAwait(false);
+                    await using var zipSource = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
+                    await using var zipDest = new FileStream(zipPath, FileMode.Create, FileAccess.Write, FileShare.None, 81920, true);
+                    await zipSource.CopyToAsync(zipDest).ConfigureAwait(false);
                 }
 
                 long fileSizeKb = new FileInfo(zipPath).Length / 1024;
@@ -88,20 +89,35 @@ namespace IdleBoardClient
                 string scriptContent = $@"@echo off
 chcp 65001 >nul
 echo [IdleBoard Güncelleyici] Uygulamanın kapanması bekleniyor (PID: {currentProcessId})...
+set /a waited=0
 :waitloop
 tasklist /fi ""PID eq {currentProcessId}"" | findstr ""{currentProcessId}"" >nul
-if not errorlevel 1 (
-    timeout /t 1 /nobreak >nul
-    goto waitloop
-)
+if errorlevel 1 goto closed
+set /a waited+=1
+if %waited% geq 60 goto giveup
+timeout /t 1 /nobreak >nul
+goto waitloop
+
+:giveup
+echo [IdleBoard Güncelleyici] Uygulama kapanmadı, güncelleme iptal edildi.
+rd /s /q ""{tempDir}"" >nul 2>&1
+exit /b 1
+
+:closed
 timeout /t 1 /nobreak >nul
 
 echo [IdleBoard Güncelleyici] Yeni sürüm arşivi açılıyor...
 powershell -NoProfile -NonInteractive -Command ""Expand-Archive -LiteralPath '{zipPath.Replace("'", "''")}' -DestinationPath '{extractedPath.Replace("'", "''")}' -Force""
+if errorlevel 1 (
+    echo [IdleBoard Güncelleyici] Arşiv açılamadı, mevcut sürüm yeniden başlatılıyor.
+    goto restart
+)
 
 echo [IdleBoard Güncelleyici] Dosyalar güncelleniyor...
-robocopy ""{extractedPath}"" ""{currentAppDir}"" /E /XD cache logs /XF watermark_cached.png *.user.config /NFL /NDL /NJH /NJS >nul 2>&1
+robocopy ""{extractedPath}"" ""{currentAppDir}"" /E /R:3 /W:2 /XD cache logs /XF watermark_cached.png *.user.config /NFL /NDL /NJH /NJS >nul 2>&1
+if errorlevel 8 echo [IdleBoard Güncelleyici] Dosyalar kopyalanırken hata oluştu (robocopy kodu %errorlevel%).
 
+:restart
 echo [IdleBoard Güncelleyici] Uygulama yeniden başlatılıyor...
 start """" ""{Path.Combine(currentAppDir, "IdleBoardClient.exe")}""
 
@@ -122,7 +138,7 @@ exit
                     WindowStyle = ProcessWindowStyle.Hidden
                 };
 
-                Process.Start(startInfo);
+                using (Process.Start(startInfo)) { }
 
                 Logger.LogInfo("[Otomatik Güncelleme] Güncelleyici başlatıldı. Mevcut uygulama kapatılıyor.");
                 System.Windows.Application.Current.Dispatcher.Invoke(() =>
