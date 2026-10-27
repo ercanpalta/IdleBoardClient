@@ -235,11 +235,37 @@ namespace SseWpfApp
         private void SseBaslat()
         {
             // Varsa eski iptal jetonunu temizle ve yenisini oluştur
-            _sseCancellationTokenSource?.Cancel();
+            var eskiCts = _sseCancellationTokenSource;
+            eskiCts?.Cancel();
             _sseCancellationTokenSource = new CancellationTokenSource();
+            eskiCts?.Dispose();
 
             var token = _sseCancellationTokenSource.Token;
             Task.Run(async () => await StartSseListenerAsync(token), token);
+        }
+
+        // Pencere herhangi bir yolla kapanırsa (oturum kapatma dahil) SSE, zamanlayıcılar ve tray ikonu temizlenir
+        protected override void OnClosed(EventArgs e)
+        {
+            try
+            {
+                _sseCancellationTokenSource?.Cancel();
+                _clockTimer?.Stop();
+                _idleTimer?.Stop();
+                _slideTimer?.Stop();
+                if (_notifyIcon != null)
+                {
+                    _notifyIcon.Visible = false;
+                    _notifyIcon.Dispose();
+                }
+                foreach (var icon in _durumIkonlari.Values) icon.Dispose();
+                _durumIkonlari.Clear();
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError("Pencere kapanırken kaynaklar temizlenemedi.", ex);
+            }
+            base.OnClosed(e);
         }
 
         // İlk açılışa özel Ayarlar Penceresi diyalog yönetimi
