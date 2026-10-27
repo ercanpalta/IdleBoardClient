@@ -146,7 +146,17 @@ namespace IdleBoardClient
                     }
                 }
 
-                await File.WriteAllBytesAsync(targetPath, imageBytes);
+                string gecici = targetPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+                try
+                {
+                    await File.WriteAllBytesAsync(gecici, imageBytes);
+                    File.Move(gecici, targetPath, overwrite: true);
+                }
+                catch
+                {
+                    try { if (File.Exists(gecici)) File.Delete(gecici); } catch { }
+                    throw;
+                }
                 Logger.LogInfo($"Görsel önbelleğe kaydedildi: {safeFileName} ({imageBytes.Length / 1024} KB)");
 
                 // Önbellek dosya sınırını kontrol et
@@ -257,7 +267,7 @@ namespace IdleBoardClient
                         try
                         {
                             string downloadUrl = $"{baseUriString.TrimEnd('/')}/images/{Uri.EscapeDataString(fileName)}";
-                            var response = await httpClient.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+                            using var response = await httpClient.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
                             if (response.IsSuccessStatusCode)
                             {
                                 string tempPath = localPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
@@ -326,7 +336,7 @@ namespace IdleBoardClient
                 string baseUriString = ExtractBaseAuthority(serverBaseUrl);
                 string downloadUrl = $"{baseUriString.TrimEnd('/')}/images/{Uri.EscapeDataString(fileName)}";
                 using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(120) };
-                var response = await httpClient.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+                using var response = await httpClient.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
                 if (response.IsSuccessStatusCode)
                 {
                     string tempPath = localPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
@@ -514,7 +524,17 @@ namespace IdleBoardClient
                 string cleanBase64 = (commaIdx >= 0) ? base64Data.Substring(commaIdx + 1) : base64Data;
                 byte[] imageBytes = Convert.FromBase64String(cleanBase64.Trim());
 
-                await File.WriteAllBytesAsync(WatermarkCachePath, imageBytes);
+                string gecici = WatermarkCachePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+                try
+                {
+                    await File.WriteAllBytesAsync(gecici, imageBytes);
+                    File.Move(gecici, WatermarkCachePath, overwrite: true);
+                }
+                catch
+                {
+                    try { if (File.Exists(gecici)) File.Delete(gecici); } catch { }
+                    throw;
+                }
                 Logger.LogInfo("Marka logosu yerel önbelleğe kaydedildi.");
             }
             catch (Exception ex)
