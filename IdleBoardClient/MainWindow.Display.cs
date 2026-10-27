@@ -37,6 +37,8 @@ namespace SseWpfApp
 
         private void ResmiGuncelle(BitmapImage yeniBitmap)
         {
+            // Beklemede olan video açılışları bu görselden daha eski sayılır ve iptal edilir
+            Interlocked.Increment(ref _videoPlayVersion);
             // Yüksek frekanslı resim değişimlerinde UI'ı kilitlememek için BeginInvoke kullanıyoruz
             Dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(() =>
             {

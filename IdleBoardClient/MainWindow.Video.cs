@@ -25,6 +25,7 @@ namespace SseWpfApp
     public partial class MainWindow : Window
     {
         private int _videoPlayVersion = 0;
+        private int _videoOpenVersion = 0;
 
         private async void VideoyuGuncelle(string dosyaAdi, double startOffsetSec = 0)
         {
@@ -53,6 +54,7 @@ namespace SseWpfApp
 
                     if (StandbyPanel != null) StandbyPanel.Visibility = Visibility.Collapsed;
                     mediaVideo.Stop();
+                    _videoOpenVersion = version;
                     mediaVideo.Source = videoUri;
                     mediaVideo.Volume = 0;
                     mediaVideo.IsMuted = true;
@@ -69,10 +71,18 @@ namespace SseWpfApp
 
         private void MediaVideo_MediaOpened(object sender, RoutedEventArgs e)
         {
+            int acilanSurum = _videoOpenVersion;
             Dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(() =>
             {
                 try
                 {
+                    // Açılış beklenirken daha yeni bir resim/video geldiyse eski videonun ekranı ezmesini engelle
+                    if (acilanSurum != _videoPlayVersion)
+                    {
+                        mediaVideo.Stop();
+                        return;
+                    }
+
                     mediaVideo.Visibility = Visibility.Visible;
                     mediaVideo.Opacity = 1.0;
 
