@@ -182,6 +182,7 @@ namespace IdleBoardClient
                 }
 
                 var activeSet = new HashSet<string>(activeFileNames, StringComparer.OrdinalIgnoreCase);
+                _aktifDosyalar = activeSet;
 
                 // 1. ADIM: Artık sunucuda seçili olmayan eski önbellek dosyalarını temizle (Purge)
                 // Boş liste geçici bir sunucu/okuma sorunu olabilir; çevrimdışı slayt için mevcut önbellek korunur
@@ -438,6 +439,8 @@ namespace IdleBoardClient
             return $"cache_{sb}.jpg";
         }
 
+        private static volatile HashSet<string> _aktifDosyalar = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         private static void EskiOnbellekDosyalariniTemizle()
         {
             Task.Run(() =>
@@ -448,6 +451,7 @@ namespace IdleBoardClient
                     {
                         if (!Directory.Exists(CacheDirectory)) return;
 
+                        var aktif = _aktifDosyalar;
                         var dirInfo = new DirectoryInfo(CacheDirectory);
                         var files = dirInfo.GetFiles()
                             .Where(f => DesteklenenUzantilar.Contains(f.Extension))
@@ -456,7 +460,8 @@ namespace IdleBoardClient
 
                         if (files.Count > MaxOnbellekDosyaSayisi)
                         {
-                            var silinecekler = files.Skip(MaxOnbellekDosyaSayisi);
+                            // Yayındaki (aktif) dosyalar asla LRU ile silinmez
+                            var silinecekler = files.Skip(MaxOnbellekDosyaSayisi).Where(f => !aktif.Contains(f.Name));
                             foreach (var f in silinecekler)
                             {
                                 try
