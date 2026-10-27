@@ -116,9 +116,28 @@ namespace SseWpfApp
             _notifyIcon.DoubleClick += (s, e) => UygulamayiAc();
         }
 
+        private bool _ayarlarAcik;
+
         private void AyarlarPenceresiniAc()
         {
+            if (_ayarlarAcik) return;
+            _ayarlarAcik = true;
+            try
+            {
+                AyarlarPenceresiniGoster();
+            }
+            finally
+            {
+                _ayarlarAcik = false;
+            }
+        }
+
+        private void AyarlarPenceresiniGoster()
+        {
             var settingsWin = new SettingsWindow(ServerUrl);
+            // Ana pencere Topmost olduğundan ayarlar penceresi arkada kalmasın
+            settingsWin.Topmost = true;
+            if (this.IsVisible) settingsWin.Owner = this;
 
             if (settingsWin.ShowDialog() == true)
             {
@@ -149,10 +168,9 @@ namespace SseWpfApp
         private void IdleTimer_Tick(object? sender, EventArgs e)
         {
             // Eğer sunucudan yayını durdur komutu geldiyse sistem boşta kalsa bile uygulamayı açma
-            if (_isStreamStopped) return;
+            if (_isStreamStopped || _ayarlarAcik) return;
 
             uint idleSuresiMs = GetIdleTimeMs();
-
             // Eğer kullanıcı belirlenen süreden fazla süredir mouse/klavye kullanmadıysa ve uygulama gizliyse:
             if (idleSuresiMs >= ((uint)IdleSuresiSaniye * 1000) && !this.IsVisible)
             {
