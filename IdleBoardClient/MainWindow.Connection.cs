@@ -84,8 +84,7 @@ namespace SseWpfApp
                     if (discovered != null && discovered.EventsUrl != ServerUrl)
                     {
                         ServerUrl = discovered.EventsUrl;
-                        Settings.Default.ServerUrl = ServerUrl;
-                        Settings.Default.Save();
+                        // Zaman aşımı kurtarmasında bulunan adres kalıcı yazılmaz; bağlantı başarılı olursa kullanıcı ayarı değişmeden kalır
                         Logger.LogInfo($"[Zaman Aşımı Kurtarma] Ağdaki yeni sunucuya bağlanılıyor: {ServerUrl}");
                         SseBaslat();
                         return;

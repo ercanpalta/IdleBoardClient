@@ -37,14 +37,37 @@ namespace IdleBoardClient
                 using var timeoutCts = new CancellationTokenSource(timeout);
                 using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(timeoutCts.Token, cancellationToken);
 
-                var receiveTask = udpClient.ReceiveAsync(linkedCts.Token).AsTask();
-                var result = await receiveTask;
+                // Zaman aşımına kadar dinle; IdleBoard olmayan veya bozuk paketler aramayı bitirmez
+                while (true)
+                {
+                    var result = await udpClient.ReceiveAsync(linkedCts.Token);
+                    var server = TryParseServerReply(result);
+                    if (server != null) return server;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Zaman aşımı - ağda sunucu yanıt vermedi
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError("[Ağ Keşfi] Otomatik arama sırasında hata", ex);
+            }
 
+            return null;
+        }
+
+        private static DiscoveredServer? TryParseServerReply(UdpReceiveResult result)
+        {
+            try
+            {
                 string jsonStr = Encoding.UTF8.GetString(result.Buffer);
                 using var doc = JsonDocument.Parse(jsonStr);
                 var root = doc.RootElement;
 
-                if (root.TryGetProperty("service", out var sProp) && sProp.GetString() == "idleboard-server")
+                if (root.ValueKind == JsonValueKind.Object &&
+                    root.TryGetProperty("service", out var sProp) &&
+                    sProp.ValueKind == JsonValueKind.String && sProp.GetString() == "idleboard-server")
                 {
                     var addr = result.RemoteEndPoint.Address;
                     if (addr.IsIPv4MappedToIPv6)
@@ -53,12 +76,12 @@ namespace IdleBoardClient
                     }
                     string responderIp = addr.ToString().Replace("::ffff:", "").Trim();
 
-                    int port = root.TryGetProperty("httpPort", out var pProp) ? pProp.GetInt32() : 3000;
-                    string hostname = root.TryGetProperty("hostname", out var hProp) ? hProp.GetString() ?? "" : "";
+                    int port = root.TryGetProperty("httpPort", out var pProp) && pProp.ValueKind == JsonValueKind.Number ? pProp.GetInt32() : 3000;
+                    string hostname = root.TryGetProperty("hostname", out var hProp) && hProp.ValueKind == JsonValueKind.String ? hProp.GetString() ?? "" : "";
 
                     // Sunucunun kendi bildirdiği primaryIp geçerli ve loopback değilse öncelikle onu değerlendir
                     string serverIp = responderIp;
-                    if (root.TryGetProperty("primaryIp", out var pIpEl) &&
+                    if (root.TryGetProperty("primaryIp", out var pIpEl) && pIpEl.ValueKind == JsonValueKind.String &&
                         !string.IsNullOrWhiteSpace(pIpEl.GetString()) &&
                         pIpEl.GetString() != "127.0.0.1")
                     {
@@ -72,13 +95,9 @@ namespace IdleBoardClient
                     return new DiscoveredServer(baseUri, eventsUri, serverIp, port, hostname);
                 }
             }
-            catch (OperationCanceledException)
+            catch (Exception)
             {
-                // Zaman aşımı - ağda sunucu yanıt vermedi
-            }
-            catch (Exception ex)
-            {
-                Logger.LogError("[Ağ Keşfi] Otomatik arama sırasında hata", ex);
+                // Geçersiz paket: yok say
             }
 
             return null;
