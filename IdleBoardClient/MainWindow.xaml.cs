@@ -660,16 +660,27 @@ namespace SseWpfApp
                                         if (root.TryGetProperty("fileName", out var fnEl) && !string.IsNullOrEmpty(fnEl.GetString()))
                                         {
                                             string pFile = fnEl.GetString()!;
+                                            bool ayniMedya = string.Equals(_sonSunucuYayinDosyasi, pFile, StringComparison.OrdinalIgnoreCase);
                                             _sonSunucuYayinDosyasi = pFile;
                                             bool isVid = root.TryGetProperty("isVideo", out var vEl) ? vEl.GetBoolean() : ImageCacheManager.IsVideoFile(pFile);
                                             _sonSunucuYayinVideoMu = isVid;
 
-                                            if (_isInitialSyncCompleted)
+                                            if (_isInitialSyncCompleted && !ayniMedya)
                                             {
                                                 Dispatcher.Invoke(() =>
                                                 {
                                                     if (isVid) VideoyuGuncelle(pFile);
                                                     else ResmiGuncelleDosyadan(pFile, null);
+                                                });
+                                            }
+                                            else if (_isInitialSyncCompleted && ayniMedya && isVid)
+                                            {
+                                                Dispatcher.Invoke(() =>
+                                                {
+                                                    if (mediaVideo.Visibility == Visibility.Visible)
+                                                    {
+                                                        mediaVideo.Play();
+                                                    }
                                                 });
                                             }
                                         }
@@ -691,7 +702,7 @@ namespace SseWpfApp
                                         string cFile = curImgEl.GetString()!;
                                         bool isVid = root.TryGetProperty("isVideo", out var ivEl) ? ivEl.GetBoolean() : ImageCacheManager.IsVideoFile(cFile);
                                         
-                                        if (_isStreamPinned || _sonSunucuYayinDosyasi != cFile)
+                                        if (!string.Equals(_sonSunucuYayinDosyasi, cFile, StringComparison.OrdinalIgnoreCase))
                                         {
                                             _sonSunucuYayinDosyasi = cFile;
                                             _sonSunucuYayinVideoMu = isVid;
@@ -734,13 +745,18 @@ namespace SseWpfApp
                                     {
                                         _sonSunucuYayinDosyasi = curImgEl.GetString();
                                         _sonSunucuYayinVideoMu = root.TryGetProperty("isVideo", out var ivEl) && ivEl.GetBoolean();
-                                        if (_sonSunucuYayinVideoMu && root.TryGetProperty("broadcastAt", out var initBatEl) && initBatEl.ValueKind == JsonValueKind.Number)
+                                        _videoStartOffsetSec = 0;
+                                        if (_sonSunucuYayinVideoMu
+                                            && root.TryGetProperty("broadcastAt", out var initBatEl) && initBatEl.ValueKind == JsonValueKind.Number
+                                            && root.TryGetProperty("serverNow", out var srvNowEl) && srvNowEl.ValueKind == JsonValueKind.Number)
                                         {
                                             long initBat = initBatEl.GetInt64();
-                                            if (initBat > 0)
+                                            long srvNow = srvNowEl.GetInt64();
+                                            double vidDur = root.TryGetProperty("mediaDuration", out var mdEl) && mdEl.ValueKind == JsonValueKind.Number ? mdEl.GetDouble() : 0;
+                                            if (initBat > 0 && srvNow >= initBat)
                                             {
-                                                long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                                                _videoStartOffsetSec = Math.Max(0, (now - initBat) / 1000.0);
+                                                double diffSec = (srvNow - initBat) / 1000.0;
+                                                _videoStartOffsetSec = (vidDur > 1.0 && diffSec >= vidDur - 1.0) ? 0 : diffSec;
                                             }
                                         }
                                         Logger.LogInfo($"[Init] Sunucu anlık yayın medyası: {_sonSunucuYayinDosyasi} (Video: {_sonSunucuYayinVideoMu}, Sabitli: {_isStreamPinned}, Offset: {_videoStartOffsetSec:0.0}s)");
@@ -887,24 +903,9 @@ namespace SseWpfApp
                                     continue;
                                 }
 
-                                double elapsedSec = 0;
-                                JsonElement playBatEl = default;
-                                if (isVideo && (root.TryGetProperty("broadcastAt", out playBatEl) || root.TryGetProperty("latestBroadcastAt", out playBatEl)))
-                                {
-                                    if (playBatEl.ValueKind == JsonValueKind.Number)
-                                    {
-                                        long playBat = playBatEl.GetInt64();
-                                        if (playBat > 0)
-                                        {
-                                            long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                                            elapsedSec = Math.Max(0, (now - playBat) / 1000.0);
-                                        }
-                                    }
-                                }
-
                                 if (isVideo && !string.IsNullOrEmpty(dosyaAdi))
                                 {
-                                    VideoyuGuncelle(dosyaAdi, elapsedSec);
+                                    VideoyuGuncelle(dosyaAdi, 0);
                                 }
                                 else if (!string.IsNullOrEmpty(dosyaAdi))
                                 {
