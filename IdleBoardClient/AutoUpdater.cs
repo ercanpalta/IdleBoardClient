@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace IdleBoardClient
@@ -22,20 +23,44 @@ namespace IdleBoardClient
             }
         }
 
+        private static int _updateInProgress;
+
+        // Güncelleme paketi yalnızca GitHub'ın HTTPS release/arşiv adreslerinden kabul edilir.
+        private static bool IsTrustedDownloadUrl(string url)
+        {
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
+                return false;
+
+            string host = uri.Host.ToLowerInvariant();
+            return host == "github.com"
+                || host == "api.github.com"
+                || host == "codeload.github.com"
+                || host.EndsWith(".githubusercontent.com", StringComparison.Ordinal);
+        }
+
         public static async Task<bool> ApplyUpdateAsync(string downloadUrl, string targetVersion)
         {
             if (string.IsNullOrWhiteSpace(downloadUrl))
                 return false;
 
+            if (!IsTrustedDownloadUrl(downloadUrl))
+            {
+                Logger.LogInfo($"[Otomatik Güncelleme] Güvenilmeyen indirme adresi reddedildi: {downloadUrl}");
+                return false;
+            }
+
+            if (Interlocked.Exchange(ref _updateInProgress, 1) == 1)
+            {
+                Logger.LogInfo("[Otomatik Güncelleme] Bir güncelleme zaten sürüyor, yeni istek yok sayıldı.");
+                return false;
+            }
+
+            string? tempDir = null;
             try
             {
                 Logger.LogInfo($"[Otomatik Güncelleme] v{targetVersion} sürümü indiriliyor: {downloadUrl}");
 
-                string tempDir = Path.Combine(Path.GetTempPath(), "IdleBoardClient_Update");
-                if (Directory.Exists(tempDir))
-                {
-                    try { Directory.Delete(tempDir, true); } catch { }
-                }
+                tempDir = Path.Combine(Path.GetTempPath(), "IdleBoardClient_Update_" + Path.GetRandomFileName().Replace(".", ""));
                 Directory.CreateDirectory(tempDir);
 
                 string zipPath = Path.Combine(tempDir, "update.zip");
@@ -110,6 +135,11 @@ exit
             catch (Exception ex)
             {
                 Logger.LogError("[Otomatik Güncelleme] Güncelleme uygulanırken hata oluştu.", ex);
+                if (tempDir != null)
+                {
+                    try { Directory.Delete(tempDir, true); } catch { }
+                }
+                Interlocked.Exchange(ref _updateInProgress, 0);
                 return false;
             }
         }
