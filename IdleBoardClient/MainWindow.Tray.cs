@@ -242,6 +242,14 @@ namespace SseWpfApp
             return finalIcon;
         }
 
+        // NotifyIcon.Text en fazla 127 karakter kabul eder; aşan metin ArgumentOutOfRangeException fırlatır
+        private void SetTrayText(string text)
+        {
+            if (_notifyIcon == null) return;
+            const int maxLength = 127;
+            _notifyIcon.Text = text.Length <= maxLength ? text : text.Substring(0, maxLength - 3) + "...";
+        }
+
         private void DurumIconGuncelle(BaglantiDurumu durum, string mesaj = "")
         {
             // Arka plan thread'lerinden çağrıldığında UI thread'ine yönlendiriyoruz
@@ -255,22 +263,22 @@ namespace SseWpfApp
                     {
                         case BaglantiDurumu.Bagli:
                             _notifyIcon.Icon = OlusturDurumIkonu(System.Drawing.Color.Green);
-                            _notifyIcon.Text = $"IdleBoard: Bağlantı Aktif\n{ServerUrl}";
+                            SetTrayText($"IdleBoard: Bağlantı Aktif\n{ServerUrl}");
                             break;
 
                         case BaglantiDurumu.Baglaniyor:
                             _notifyIcon.Icon = OlusturDurumIkonu(System.Drawing.Color.Orange);
-                            _notifyIcon.Text = string.IsNullOrWhiteSpace(mesaj)
+                            SetTrayText(string.IsNullOrWhiteSpace(mesaj)
                                 ? "IdleBoard: Bağlanıyor..."
-                                : $"IdleBoard: Bağlanıyor...\n{mesaj}";
+                                : $"IdleBoard: Bağlanıyor...\n{mesaj}");
                             break;
 
                         case BaglantiDurumu.Koptu:
                             _notifyIcon.Icon = OlusturDurumIkonu(System.Drawing.Color.Red);
                             // NotifyIcon.Text has a strict max length; show only a short status here
-                            _notifyIcon.Text = cacheCount > 0
+                            SetTrayText(cacheCount > 0
                                 ? $"IdleBoard: Çevrimdışı ({cacheCount} Önbellek)"
-                                : "IdleBoard: Bağlantı Kesildi!";
+                                : "IdleBoard: Bağlantı Kesildi!");
                             // Log the full message to application logs (avoid putting long text in the tray icon)
                             if (!string.IsNullOrWhiteSpace(mesaj))
                             {
