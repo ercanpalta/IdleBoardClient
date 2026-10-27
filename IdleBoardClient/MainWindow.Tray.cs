@@ -38,6 +38,15 @@ namespace SseWpfApp
                 return;
             }
 
+            // Tek başına modifier tuşları (Ctrl/Shift/Alt) kısayolu bozmasın diye yok sayılır
+            var key = e.Key == System.Windows.Input.Key.System ? e.SystemKey : e.Key;
+            if (key == System.Windows.Input.Key.LeftCtrl || key == System.Windows.Input.Key.RightCtrl ||
+                key == System.Windows.Input.Key.LeftShift || key == System.Windows.Input.Key.RightShift ||
+                key == System.Windows.Input.Key.LeftAlt || key == System.Windows.Input.Key.RightAlt)
+            {
+                return;
+            }
+
             // Herhangi bir klavye tuşuna basıldığında uygulamayı tepsiye küçült
             HideToSystemTray();
             e.Handled = true;
