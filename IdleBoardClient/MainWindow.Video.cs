@@ -87,12 +87,30 @@ namespace SseWpfApp
                     var videoUri = new Uri(localPath, UriKind.Absolute);
 
                     if (StandbyPanel != null) StandbyPanel.Visibility = Visibility.Collapsed;
-                    mediaVideo.Stop();
-                    _videoOpenVersion = version;
-                    mediaVideo.Source = videoUri;
-                    mediaVideo.Volume = 0;
-                    mediaVideo.IsMuted = true;
-                    mediaVideo.Play();
+
+                    // Eğer ekrandaki video ile aynı video tekrar geldiyse (tek video döngüsü veya ardışık yayın):
+                    // Kaynağı sıfırdan atayıp MediaOpened beklemeden anında başa sar ve oynat (kesintisiz loop)
+                    if (Equals(mediaVideo.Source, videoUri))
+                    {
+                        mediaVideo.Position = TimeSpan.FromSeconds(_videoStartOffsetSec);
+                        mediaVideo.Visibility = Visibility.Visible;
+                        mediaVideo.Opacity = 1.0;
+                        mediaVideo.Play();
+
+                        imgCanli.BeginAnimation(UIElement.OpacityProperty, null);
+                        imgCanli.Opacity = 0.0;
+                        imgCanli.Source = null;
+                        imgCanli.Visibility = Visibility.Collapsed;
+                    }
+                    else
+                    {
+                        mediaVideo.Stop();
+                        _videoOpenVersion = version;
+                        mediaVideo.Source = videoUri;
+                        mediaVideo.Volume = 0;
+                        mediaVideo.IsMuted = true;
+                        mediaVideo.Play();
+                    }
 
                     Logger.LogInfo($"[Video Oynatıcı] Video yerel diskten oynatılıyor: {dosyaAdi}");
                 });
