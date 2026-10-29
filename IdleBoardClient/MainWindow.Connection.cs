@@ -440,16 +440,14 @@ namespace SseWpfApp
                                                 {
                                                     if (mediaVideo.Visibility == Visibility.Visible)
                                                     {
-                                                        // Video oynatılırken pinlendiyse veya çoktan sonuna ulaşıp durduysa:
-                                                        // Sona ulaştıysa baştan başlat, çalıyorsa oynatmaya devam et
-                                                        bool sonaUlasti = mediaVideo.NaturalDuration.HasTimeSpan &&
-                                                            mediaVideo.Position >= mediaVideo.NaturalDuration.TimeSpan - TimeSpan.FromMilliseconds(300);
+                                                        double durationSec = mediaVideo.NaturalDuration.HasTimeSpan ? mediaVideo.NaturalDuration.TimeSpan.TotalSeconds : _aktifVideoSuresiSn;
+                                                        bool sonaUlasti = durationSec > 0 && mediaVideo.Position.TotalSeconds >= (durationSec - 0.3);
                                                         if (sonaUlasti)
                                                         {
-                                                            mediaVideo.Stop();
                                                             mediaVideo.Position = TimeSpan.Zero;
                                                         }
                                                         mediaVideo.Play();
+                                                        EnsureVideoWatchdogRunning();
                                                     }
                                                     else
                                                     {
@@ -496,14 +494,14 @@ namespace SseWpfApp
                                             {
                                                 if (mediaVideo.Visibility == Visibility.Visible)
                                                 {
-                                                    bool sonaUlasti = mediaVideo.NaturalDuration.HasTimeSpan &&
-                                                        mediaVideo.Position >= mediaVideo.NaturalDuration.TimeSpan - TimeSpan.FromMilliseconds(300);
+                                                    double durationSec = mediaVideo.NaturalDuration.HasTimeSpan ? mediaVideo.NaturalDuration.TimeSpan.TotalSeconds : _aktifVideoSuresiSn;
+                                                    bool sonaUlasti = durationSec > 0 && mediaVideo.Position.TotalSeconds >= (durationSec - 0.3);
                                                     if (sonaUlasti)
                                                     {
-                                                        mediaVideo.Stop();
                                                         mediaVideo.Position = TimeSpan.Zero;
-                                                        mediaVideo.Play();
                                                     }
+                                                    mediaVideo.Play();
+                                                    EnsureVideoWatchdogRunning();
                                                 }
                                             });
                                         }

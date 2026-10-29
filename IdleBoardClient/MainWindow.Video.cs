@@ -25,6 +25,8 @@ namespace SseWpfApp
     public partial class MainWindow : Window
     {
         private int _videoPlayVersion = 0;
+        private DispatcherTimer? _videoLoopWatchdog;
+        private double _aktifVideoSuresiSn = 0;
         private int _videoOpenVersion = 0;
         private static bool _mfChecked = false;
         private static bool _mfAvailable = true;
@@ -79,6 +81,7 @@ namespace SseWpfApp
                     Logger.LogError($"[Video Oynatıcı] Video yerel diske indirilemedi: {dosyaAdi}. Siyah ekran verilmiyor, mevcut görsel korunuyor.");
                     return;
                 }
+                _aktifVideoSuresiSn = Math.Max(0.5, ImageCacheManager.GetVideoDuration(localPath));
 
                 Dispatcher.Invoke(() =>
                 {
@@ -92,7 +95,6 @@ namespace SseWpfApp
                     // Kaynağı sıfırdan atayıp MediaOpened beklemeden anında başa sar ve oynat (kesintisiz loop)
                     if (Equals(mediaVideo.Source, videoUri))
                     {
-                        mediaVideo.Stop();
                         if (_videoStartOffsetSec > 0.05)
                         {
                             mediaVideo.Position = TimeSpan.FromSeconds(_videoStartOffsetSec);
@@ -104,6 +106,7 @@ namespace SseWpfApp
                         mediaVideo.Visibility = Visibility.Visible;
                         mediaVideo.Opacity = 1.0;
                         mediaVideo.Play();
+                        EnsureVideoWatchdogRunning();
 
                         imgCanli.BeginAnimation(UIElement.OpacityProperty, null);
                         imgCanli.Opacity = 0.0;
@@ -147,6 +150,11 @@ namespace SseWpfApp
                     mediaVideo.Visibility = Visibility.Visible;
                     mediaVideo.Opacity = 1.0;
 
+                    if (mediaVideo.NaturalDuration.HasTimeSpan && mediaVideo.NaturalDuration.TimeSpan.TotalSeconds > 0.5)
+                    {
+                        _aktifVideoSuresiSn = mediaVideo.NaturalDuration.TimeSpan.TotalSeconds;
+                    }
+
                     if (_videoStartOffsetSec > 0.5)
                     {
                         mediaVideo.Position = TimeSpan.FromSeconds(_videoStartOffsetSec);
@@ -154,6 +162,7 @@ namespace SseWpfApp
                     }
 
                     mediaVideo.Play();
+                    EnsureVideoWatchdogRunning();
 
                     // Çevrimdışı slaytta zamanlayıcıyı sabit 65 sn yerine videonun gerçek süresine göre ayarla
                     if (_isOffline && _slideTimer.IsEnabled && mediaVideo.NaturalDuration.HasTimeSpan)
@@ -174,6 +183,64 @@ namespace SseWpfApp
             }));
         }
 
+        private void EnsureVideoWatchdogRunning()
+        {
+            if (_videoLoopWatchdog == null)
+            {
+                _videoLoopWatchdog = new DispatcherTimer(DispatcherPriority.Normal)
+                {
+                    Interval = TimeSpan.FromMilliseconds(150)
+                };
+                _videoLoopWatchdog.Tick += VideoLoopWatchdog_Tick;
+            }
+            if (!_videoLoopWatchdog.IsEnabled)
+            {
+                _videoLoopWatchdog.Start();
+            }
+        }
+
+        private void VideoLoopWatchdog_Tick(object? sender, EventArgs e)
+        {
+            try
+            {
+                if (mediaVideo.Visibility != Visibility.Visible || mediaVideo.Source == null)
+                {
+                    _videoLoopWatchdog?.Stop();
+                    return;
+                }
+
+                double durationSec = _aktifVideoSuresiSn;
+                if (mediaVideo.NaturalDuration.HasTimeSpan && mediaVideo.NaturalDuration.TimeSpan.TotalSeconds > 0.5)
+                {
+                    durationSec = mediaVideo.NaturalDuration.TimeSpan.TotalSeconds;
+                }
+
+                if (durationSec <= 0.5) return;
+
+                // Windows Media Foundation EVR MediaEnded olayını tetiklemediğinde
+                // videonun bittiğini konumuyla kesin olarak tespit et ve baştan döngüye al
+                if (mediaVideo.Position.TotalSeconds >= (durationSec - 0.15))
+                {
+                    if (_isStreamPinned)
+                    {
+                        mediaVideo.Position = TimeSpan.Zero;
+                        mediaVideo.Play();
+                        Logger.LogInfo($"[Pin] Video sona ulaştı ({durationSec:0.0}s), baştan döngüye alındı.");
+                    }
+                    else if (_isOffline)
+                    {
+                        _videoLoopWatchdog?.Stop();
+                        mediaVideo.Pause();
+                        SonrakiOfflineGorseliniGoster();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError("[Video Watchdog] Hata:", ex);
+            }
+        }
+
         private void MediaVideo_MediaEnded(object sender, RoutedEventArgs e)
         {
             try
@@ -186,10 +253,9 @@ namespace SseWpfApp
                         try
                         {
                             if (!_isStreamPinned) return;
-                            mediaVideo.Stop();
                             mediaVideo.Position = TimeSpan.Zero;
                             mediaVideo.Play();
-                            Logger.LogInfo("[Pin] Sabitlenmiş video sona ulaştı, baştan döngüye alındı.");
+                            Logger.LogInfo("[Pin] MediaEnded: Sabitlenmiş video baştan döngüye alındı.");
                         }
                         catch (Exception ex)
                         {
@@ -202,6 +268,7 @@ namespace SseWpfApp
                 mediaVideo.Pause();
                 if (_isOffline)
                 {
+                    _videoLoopWatchdog?.Stop();
                     Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(() =>
                     {
                         SonrakiOfflineGorseliniGoster();

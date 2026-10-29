@@ -76,6 +76,7 @@ namespace SseWpfApp
                 ++_resimAnimasyonSurum;
                 if (mediaVideo.Visibility == Visibility.Visible)
                 {
+                    _videoLoopWatchdog?.Stop();
                     mediaVideo.Stop();
                     mediaVideo.Source = null;
                     mediaVideo.Visibility = Visibility.Collapsed;

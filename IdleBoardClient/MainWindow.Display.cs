@@ -63,6 +63,7 @@ namespace SseWpfApp
                         if (_transitionEffect == "none")
                         {
                             imgCanli.Opacity = 1.0;
+                            _videoLoopWatchdog?.Stop();
                             mediaVideo.Stop();
                             mediaVideo.Source = null;
                             mediaVideo.Visibility = Visibility.Collapsed;
