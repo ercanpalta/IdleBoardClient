@@ -95,13 +95,13 @@ namespace IdleBoardClient
         }
 
         /// <summary>
-        /// Yerel diskteki MP4 dosyasının başlığını (moov/mvhd atomu) ikili düzeyde hızlıca ayrıştırarak
-        /// videonun kesin süresini saniye cinsinden döndürür. Çözülemezse güvenli varsayılan 10 sn döner.
+        /// Yerel diskteki MP4 dosyasının başlığını (moov/mvhd ve trak/mdhd atomları) ikili düzeyde ayrıştırarak
+        /// videonun kesin süresini saniye cinsinden döndürür. Çözülemezse 0 döner (asla yapay varsayılan dönmez).
         /// </summary>
         public static double GetVideoDuration(string localFilePath)
         {
             if (string.IsNullOrWhiteSpace(localFilePath) || !File.Exists(localFilePath))
-                return 10.0;
+                return 0;
 
             try
             {
@@ -109,6 +109,8 @@ namespace IdleBoardClient
                 using var br = new BinaryReader(fs);
                 long fileLength = fs.Length;
                 long offset = 0;
+                double movieDuration = 0;
+                double maxTrackDuration = 0;
 
                 while (offset < fileLength - 8)
                 {
@@ -116,7 +118,7 @@ namespace IdleBoardClient
                     byte[] header = br.ReadBytes(8);
                     if (header.Length < 8) break;
 
-                    uint size = (uint)((header[0] << 24) | (header[1] << 16) | (header[2] << 8) | header[3]);
+                    long size = (uint)((header[0] << 24) | (header[1] << 16) | (header[2] << 8) | header[3]);
                     string type = Encoding.ASCII.GetString(header, 4, 4);
                     long headerSize = 8;
 
@@ -124,13 +126,13 @@ namespace IdleBoardClient
                     {
                         byte[] largeHeader = br.ReadBytes(8);
                         if (largeHeader.Length < 8) break;
-                        size = (uint)(((ulong)largeHeader[0] << 56) | ((ulong)largeHeader[1] << 48) | ((ulong)largeHeader[2] << 40) | ((ulong)largeHeader[3] << 32)
+                        size = (long)(((ulong)largeHeader[0] << 56) | ((ulong)largeHeader[1] << 48) | ((ulong)largeHeader[2] << 40) | ((ulong)largeHeader[3] << 32)
                                     | ((ulong)largeHeader[4] << 24) | ((ulong)largeHeader[5] << 16) | ((ulong)largeHeader[6] << 8) | (ulong)largeHeader[7]);
                         headerSize = 16;
                     }
                     else if (size == 0)
                     {
-                        size = (uint)(fileLength - offset);
+                        size = fileLength - offset;
                     }
 
                     if (size < headerSize) break;
@@ -146,14 +148,27 @@ namespace IdleBoardClient
                             byte[] subHead = br.ReadBytes(8);
                             if (subHead.Length < 8) break;
 
-                            uint subSize = (uint)((subHead[0] << 24) | (subHead[1] << 16) | (subHead[2] << 8) | subHead[3]);
+                            long subSize = (uint)((subHead[0] << 24) | (subHead[1] << 16) | (subHead[2] << 8) | subHead[3]);
                             string subType = Encoding.ASCII.GetString(subHead, 4, 4);
+                            long subHeaderSize = 8;
+                            if (subSize == 1)
+                            {
+                                byte[] subLarge = br.ReadBytes(8);
+                                if (subLarge.Length < 8) break;
+                                subSize = (long)(((ulong)subLarge[0] << 56) | ((ulong)subLarge[1] << 48) | ((ulong)subLarge[2] << 40) | ((ulong)subLarge[3] << 32)
+                                            | ((ulong)subLarge[4] << 24) | ((ulong)subLarge[5] << 16) | ((ulong)subLarge[6] << 8) | (ulong)subLarge[7]);
+                                subHeaderSize = 16;
+                            }
+                            else if (subSize == 0)
+                            {
+                                subSize = moovEnd - subOffset;
+                            }
                             if (subSize <= 0) break;
 
                             if (subType == "mvhd")
                             {
                                 byte version = br.ReadByte();
-                                fs.Seek(subOffset + 8 + (version == 0 ? 12 : 20), SeekOrigin.Begin);
+                                fs.Seek(subOffset + subHeaderSize + (version == 0 ? 12 : 20), SeekOrigin.Begin);
                                 byte[] tb = br.ReadBytes(4);
                                 uint timescale = (uint)((tb[0] << 24) | (tb[1] << 16) | (tb[2] << 8) | tb[3]);
 
@@ -172,7 +187,64 @@ namespace IdleBoardClient
 
                                 if (timescale > 0 && duration > 0)
                                 {
-                                    return Math.Round(duration / timescale, 2);
+                                    movieDuration = Math.Max(movieDuration, duration / timescale);
+                                }
+                            }
+                            else if (subType == "trak")
+                            {
+                                long trakEnd = subOffset + subSize;
+                                long trakSub = subOffset + subHeaderSize;
+                                while (trakSub < trakEnd - 8)
+                                {
+                                    fs.Seek(trakSub, SeekOrigin.Begin);
+                                    byte[] tHead = br.ReadBytes(8);
+                                    if (tHead.Length < 8) break;
+                                    long tSize = (uint)((tHead[0] << 24) | (tHead[1] << 16) | (tHead[2] << 8) | tHead[3]);
+                                    string tType = Encoding.ASCII.GetString(tHead, 4, 4);
+                                    if (tSize <= 0) break;
+
+                                    if (tType == "mdia")
+                                    {
+                                        long mdiaEnd = trakSub + tSize;
+                                        long mdiaSub = trakSub + 8;
+                                        while (mdiaSub < mdiaEnd - 8)
+                                        {
+                                            fs.Seek(mdiaSub, SeekOrigin.Begin);
+                                            byte[] mHead = br.ReadBytes(8);
+                                            if (mHead.Length < 8) break;
+                                            long mSize = (uint)((mHead[0] << 24) | (mHead[1] << 16) | (mHead[2] << 8) | mHead[3]);
+                                            string mType = Encoding.ASCII.GetString(mHead, 4, 4);
+                                            if (mSize <= 0) break;
+
+                                            if (mType == "mdhd")
+                                            {
+                                                byte v = br.ReadByte();
+                                                fs.Seek(mdiaSub + 8 + (v == 0 ? 12 : 20), SeekOrigin.Begin);
+                                                byte[] tb = br.ReadBytes(4);
+                                                uint ts = (uint)((tb[0] << 24) | (tb[1] << 16) | (tb[2] << 8) | tb[3]);
+                                                double tDur;
+                                                if (v == 0)
+                                                {
+                                                    byte[] db = br.ReadBytes(4);
+                                                    tDur = (uint)((db[0] << 24) | (db[1] << 16) | (db[2] << 8) | db[3]);
+                                                }
+                                                else
+                                                {
+                                                    byte[] db = br.ReadBytes(8);
+                                                    tDur = (((ulong)db[0] << 56) | ((ulong)db[1] << 48) | ((ulong)db[2] << 40) | ((ulong)db[3] << 32)
+                                                           | ((ulong)db[4] << 24) | ((ulong)db[5] << 16) | ((ulong)db[6] << 8) | (ulong)db[7]);
+                                                }
+                                                if (ts > 0 && tDur > 0)
+                                                {
+                                                    maxTrackDuration = Math.Max(maxTrackDuration, tDur / ts);
+                                                }
+                                                break;
+                                            }
+                                            mdiaSub += mSize;
+                                        }
+                                        break;
+                                    }
+                                    trakSub += tSize;
                                 }
                             }
                             subOffset += subSize;
@@ -181,10 +253,16 @@ namespace IdleBoardClient
                     }
                     offset += size;
                 }
-            }
-            catch { }
 
-            return 10.0;
+                double finalSec = Math.Max(movieDuration, maxTrackDuration);
+                if (finalSec > 0.1) return Math.Round(finalSec, 2);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError($"[Video Süresi] {localFilePath} çözümlenirken hata:", ex);
+            }
+
+            return 0;
         }
 
         private const int MaxOnbellekDosyaSayisi = 200;

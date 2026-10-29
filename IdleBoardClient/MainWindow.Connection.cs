@@ -415,6 +415,11 @@ namespace SseWpfApp
                                     bool pinned = root.TryGetProperty("isPinned", out var pinEl) && pinEl.GetBoolean();
                                     _isStreamPinned = pinned;
                                     Logger.LogInfo($"[Pin] Sunucudan sabitleme talimatı alındı: {pinned}");
+                                    if (root.TryGetProperty("mediaDuration", out var pmdEl) && pmdEl.ValueKind == JsonValueKind.Number)
+                                    {
+                                        double pmd = pmdEl.GetDouble();
+                                        if (pmd > 0.5) _aktifVideoSuresiSn = Math.Max(_aktifVideoSuresiSn, pmd);
+                                    }
 
                                     if (pinned)
                                     {
@@ -440,7 +445,7 @@ namespace SseWpfApp
                                                 {
                                                     if (mediaVideo.Visibility == Visibility.Visible)
                                                     {
-                                                        double durationSec = mediaVideo.NaturalDuration.HasTimeSpan ? mediaVideo.NaturalDuration.TimeSpan.TotalSeconds : _aktifVideoSuresiSn;
+                                                        double durationSec = Math.Max(_aktifVideoSuresiSn, (mediaVideo.NaturalDuration.HasTimeSpan ? mediaVideo.NaturalDuration.TimeSpan.TotalSeconds : 0));
                                                         bool sonaUlasti = durationSec > 0 && mediaVideo.Position.TotalSeconds >= (durationSec - 0.3);
                                                         if (sonaUlasti)
                                                         {
@@ -469,6 +474,19 @@ namespace SseWpfApp
                                     {
                                         SetStreamStopped(isPauseEl.GetBoolean());
                                     }
+                                    double serverDur = 0;
+                                    if (root.TryGetProperty("activeDuration", out var adEl) && adEl.ValueKind == JsonValueKind.Number)
+                                    {
+                                        serverDur = adEl.GetDouble();
+                                    }
+                                    else if (root.TryGetProperty("mediaDuration", out var smdEl) && smdEl.ValueKind == JsonValueKind.Number)
+                                    {
+                                        serverDur = smdEl.GetDouble();
+                                    }
+                                    if (serverDur > 0.5)
+                                    {
+                                        _aktifVideoSuresiSn = Math.Max(_aktifVideoSuresiSn, serverDur);
+                                    }
                                     if (root.TryGetProperty("currentImage", out var curImgEl) && !string.IsNullOrEmpty(curImgEl.GetString()))
                                     {
                                         string cFile = curImgEl.GetString()!;
@@ -483,7 +501,7 @@ namespace SseWpfApp
                                             {
                                                 Dispatcher.Invoke(() =>
                                                 {
-                                                    if (isVid) VideoyuGuncelle(cFile);
+                                                    if (isVid) VideoyuGuncelle(cFile, 0, serverDur);
                                                     else ResmiGuncelleDosyadan(cFile, null);
                                                 });
                                             }
@@ -494,7 +512,7 @@ namespace SseWpfApp
                                             {
                                                 if (mediaVideo.Visibility == Visibility.Visible)
                                                 {
-                                                    double durationSec = mediaVideo.NaturalDuration.HasTimeSpan ? mediaVideo.NaturalDuration.TimeSpan.TotalSeconds : _aktifVideoSuresiSn;
+                                                    double durationSec = Math.Max(_aktifVideoSuresiSn, (mediaVideo.NaturalDuration.HasTimeSpan ? mediaVideo.NaturalDuration.TimeSpan.TotalSeconds : 0));
                                                     bool sonaUlasti = durationSec > 0 && mediaVideo.Position.TotalSeconds >= (durationSec - 0.3);
                                                     if (sonaUlasti)
                                                     {
@@ -736,7 +754,16 @@ namespace SseWpfApp
 
                                 if (isVideo && !string.IsNullOrEmpty(dosyaAdi))
                                 {
-                                    VideoyuGuncelle(dosyaAdi, 0);
+                                    double serverDur = 0;
+                                    if (root.TryGetProperty("videoDuration", out var vdEl) && vdEl.ValueKind == JsonValueKind.Number)
+                                    {
+                                        serverDur = vdEl.GetDouble();
+                                    }
+                                    else if (root.TryGetProperty("mediaDuration", out var mdEl) && mdEl.ValueKind == JsonValueKind.Number)
+                                    {
+                                        serverDur = mdEl.GetDouble();
+                                    }
+                                    VideoyuGuncelle(dosyaAdi, 0, serverDur);
                                 }
                                 else if (!string.IsNullOrEmpty(dosyaAdi))
                                 {

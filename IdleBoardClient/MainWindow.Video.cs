@@ -27,6 +27,8 @@ namespace SseWpfApp
         private int _videoPlayVersion = 0;
         private DispatcherTimer? _videoLoopWatchdog;
         private double _aktifVideoSuresiSn = 0;
+        private double _lastWatchdogPos = -1;
+        private int _watchdogStallTicks = 0;
         private int _videoOpenVersion = 0;
         private static bool _mfChecked = false;
         private static bool _mfAvailable = true;
@@ -57,7 +59,7 @@ namespace SseWpfApp
             return _mfAvailable;
         }
 
-        private async void VideoyuGuncelle(string dosyaAdi, double startOffsetSec = 0)
+        private async void VideoyuGuncelle(string dosyaAdi, double startOffsetSec = 0, double serverDurationSec = 0)
         {
             try
             {
@@ -81,7 +83,12 @@ namespace SseWpfApp
                     Logger.LogError($"[Video Oynatıcı] Video yerel diske indirilemedi: {dosyaAdi}. Siyah ekran verilmiyor, mevcut görsel korunuyor.");
                     return;
                 }
-                _aktifVideoSuresiSn = Math.Max(0.5, ImageCacheManager.GetVideoDuration(localPath));
+                double diskDur = ImageCacheManager.GetVideoDuration(localPath);
+                double effectiveDur = Math.Max(serverDurationSec, diskDur);
+                if (effectiveDur > 0.5)
+                {
+                    _aktifVideoSuresiSn = effectiveDur;
+                }
 
                 Dispatcher.Invoke(() =>
                 {
@@ -101,7 +108,14 @@ namespace SseWpfApp
                         }
                         else
                         {
-                            mediaVideo.Position = TimeSpan.Zero;
+                            // Oynatılmakta olan videoyu yarıda kesip başa sarma!
+                            // Yalnızca video sona ulaştıysa veya gizliyse pozisyonu sıfırla
+                            double curDur = Math.Max(_aktifVideoSuresiSn, (mediaVideo.NaturalDuration.HasTimeSpan ? mediaVideo.NaturalDuration.TimeSpan.TotalSeconds : 0));
+                            bool sonaUlasti = curDur > 0.5 && mediaVideo.Position.TotalSeconds >= (curDur - 0.3);
+                            if (sonaUlasti || mediaVideo.Visibility != Visibility.Visible)
+                            {
+                                mediaVideo.Position = TimeSpan.Zero;
+                            }
                         }
                         mediaVideo.Visibility = Visibility.Visible;
                         mediaVideo.Opacity = 1.0;
@@ -206,26 +220,47 @@ namespace SseWpfApp
                 if (mediaVideo.Visibility != Visibility.Visible || mediaVideo.Source == null)
                 {
                     _videoLoopWatchdog?.Stop();
+                    _lastWatchdogPos = -1;
+                    _watchdogStallTicks = 0;
                     return;
                 }
 
                 double durationSec = _aktifVideoSuresiSn;
                 if (mediaVideo.NaturalDuration.HasTimeSpan && mediaVideo.NaturalDuration.TimeSpan.TotalSeconds > 0.5)
                 {
-                    durationSec = mediaVideo.NaturalDuration.TimeSpan.TotalSeconds;
+                    durationSec = Math.Max(durationSec, mediaVideo.NaturalDuration.TimeSpan.TotalSeconds);
                 }
 
                 if (durationSec <= 0.5) return;
 
-                // Windows Media Foundation EVR MediaEnded olayını tetiklemediğinde
-                // videonun bittiğini konumuyla kesin olarak tespit et ve baştan döngüye al
-                if (mediaVideo.Position.TotalSeconds >= (durationSec - 0.15))
+                double curPos = mediaVideo.Position.TotalSeconds;
+
+                // Stall tespiti: Video sonuna yaklaştığında (son 0.5 sn) pozisyon donup ilerlemiyorsa
+                bool isNearEnd = curPos >= (durationSec - 0.5);
+                if (isNearEnd && Math.Abs(curPos - _lastWatchdogPos) < 0.05)
                 {
+                    _watchdogStallTicks++;
+                }
+                else
+                {
+                    _watchdogStallTicks = 0;
+                }
+                _lastWatchdogPos = curPos;
+
+                // 1. Durum: Pozisyon video süresine veya son 50 milisaniyesine ulaştı
+                // 2. Durum: Video son yarım saniyesinde takıldı ve en az 300 ms (2 tick) boyunca ilerlemedi
+                bool videoBitti = curPos >= (durationSec - 0.05) || (_watchdogStallTicks >= 2 && isNearEnd);
+
+                if (videoBitti)
+                {
+                    _watchdogStallTicks = 0;
+                    _lastWatchdogPos = -1;
+
                     if (_isStreamPinned)
                     {
                         mediaVideo.Position = TimeSpan.Zero;
                         mediaVideo.Play();
-                        Logger.LogInfo($"[Pin] Video sona ulaştı ({durationSec:0.0}s), baştan döngüye alındı.");
+                        Logger.LogInfo($"[Pin] Video sona ulaştı ({curPos:0.0}s / {durationSec:0.0}s), baştan döngüye alındı.");
                     }
                     else if (_isOffline)
                     {
