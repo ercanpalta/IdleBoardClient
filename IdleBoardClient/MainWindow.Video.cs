@@ -116,7 +116,7 @@ namespace SseWpfApp
                         _videoOpenVersion = version;
                         mediaVideo.Source = videoUri;
                         mediaVideo.Volume = 0;
-                        mediaVideo.IsMuted = true;
+                        mediaVideo.IsMuted = false;
                         mediaVideo.Play();
                     }
 

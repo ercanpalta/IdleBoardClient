@@ -86,6 +86,16 @@ namespace SseWpfApp
         public MainWindow()
         {
             InitializeComponent();
+            try
+            {
+                RenderOptions.ProcessRenderMode = RenderMode.Default;
+                int tier = RenderCapability.Tier >> 16;
+                Logger.LogInfo($"[Grafik Donanımı] WPF Render Seviyesi: Tier {tier} (2 = Tam Donanım Hızlandırma)");
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError("[Grafik Donanımı] Render modu ayarlanırken hata:", ex);
+            }
             UygulaImageFit(Settings.Default.ImageFit);
             UygulaShowInfoBar(Settings.Default.ShowInfoBar);
             UygulaTransitionEffect(Settings.Default.TransitionEffect);
