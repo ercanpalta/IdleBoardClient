@@ -33,7 +33,7 @@
                       VerticalAlignment="Center"
                       LoadedBehavior="Manual"
                       UnloadedBehavior="Manual"
-                      ScrubbingEnabled="True"
+                      ScrubbingEnabled="False"
                       Volume="0"
                       IsMuted="True"
                       Visibility="Collapsed"
