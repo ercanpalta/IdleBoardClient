@@ -94,6 +94,99 @@ namespace IdleBoardClient
             return fileName.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase);
         }
 
+        /// <summary>
+        /// Yerel diskteki MP4 dosyasının başlığını (moov/mvhd atomu) ikili düzeyde hızlıca ayrıştırarak
+        /// videonun kesin süresini saniye cinsinden döndürür. Çözülemezse güvenli varsayılan 10 sn döner.
+        /// </summary>
+        public static double GetVideoDuration(string localFilePath)
+        {
+            if (string.IsNullOrWhiteSpace(localFilePath) || !File.Exists(localFilePath))
+                return 10.0;
+
+            try
+            {
+                using var fs = new FileStream(localFilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                using var br = new BinaryReader(fs);
+                long fileLength = fs.Length;
+                long offset = 0;
+
+                while (offset < fileLength - 8)
+                {
+                    fs.Seek(offset, SeekOrigin.Begin);
+                    byte[] header = br.ReadBytes(8);
+                    if (header.Length < 8) break;
+
+                    uint size = (uint)((header[0] << 24) | (header[1] << 16) | (header[2] << 8) | header[3]);
+                    string type = Encoding.ASCII.GetString(header, 4, 4);
+                    long headerSize = 8;
+
+                    if (size == 1)
+                    {
+                        byte[] largeHeader = br.ReadBytes(8);
+                        if (largeHeader.Length < 8) break;
+                        size = (uint)(((ulong)largeHeader[0] << 56) | ((ulong)largeHeader[1] << 48) | ((ulong)largeHeader[2] << 40) | ((ulong)largeHeader[3] << 32)
+                                    | ((ulong)largeHeader[4] << 24) | ((ulong)largeHeader[5] << 16) | ((ulong)largeHeader[6] << 8) | (ulong)largeHeader[7]);
+                        headerSize = 16;
+                    }
+                    else if (size == 0)
+                    {
+                        size = (uint)(fileLength - offset);
+                    }
+
+                    if (size < headerSize) break;
+
+                    if (type == "moov")
+                    {
+                        long moovEnd = offset + size;
+                        long subOffset = offset + headerSize;
+
+                        while (subOffset < moovEnd - 8)
+                        {
+                            fs.Seek(subOffset, SeekOrigin.Begin);
+                            byte[] subHead = br.ReadBytes(8);
+                            if (subHead.Length < 8) break;
+
+                            uint subSize = (uint)((subHead[0] << 24) | (subHead[1] << 16) | (subHead[2] << 8) | subHead[3]);
+                            string subType = Encoding.ASCII.GetString(subHead, 4, 4);
+                            if (subSize <= 0) break;
+
+                            if (subType == "mvhd")
+                            {
+                                byte version = br.ReadByte();
+                                fs.Seek(subOffset + 8 + (version == 0 ? 12 : 20), SeekOrigin.Begin);
+                                byte[] tb = br.ReadBytes(4);
+                                uint timescale = (uint)((tb[0] << 24) | (tb[1] << 16) | (tb[2] << 8) | tb[3]);
+
+                                double duration;
+                                if (version == 0)
+                                {
+                                    byte[] db = br.ReadBytes(4);
+                                    duration = (uint)((db[0] << 24) | (db[1] << 16) | (db[2] << 8) | db[3]);
+                                }
+                                else
+                                {
+                                    byte[] db = br.ReadBytes(8);
+                                    duration = (((ulong)db[0] << 56) | ((ulong)db[1] << 48) | ((ulong)db[2] << 40) | ((ulong)db[3] << 32)
+                                              | ((ulong)db[4] << 24) | ((ulong)db[5] << 16) | ((ulong)db[6] << 8) | (ulong)db[7]);
+                                }
+
+                                if (timescale > 0 && duration > 0)
+                                {
+                                    return Math.Round(duration / timescale, 2);
+                                }
+                            }
+                            subOffset += subSize;
+                        }
+                        break;
+                    }
+                    offset += size;
+                }
+            }
+            catch { }
+
+            return 10.0;
+        }
+
         private const int MaxOnbellekDosyaSayisi = 200;
 
         static ImageCacheManager()

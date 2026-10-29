@@ -181,8 +181,9 @@ namespace SseWpfApp
                 VideoyuGuncelle(System.IO.Path.GetFileName(filePath));
                 if (_slideTimer.IsEnabled)
                 {
+                    double videoSn = ImageCacheManager.GetVideoDuration(filePath);
                     _slideTimer.Stop();
-                    _slideTimer.Interval = TimeSpan.FromSeconds(65);
+                    _slideTimer.Interval = TimeSpan.FromSeconds(Math.Max(3, videoSn + 1));
                     _slideTimer.Start();
                 }
             }
