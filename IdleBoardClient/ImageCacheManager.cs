@@ -18,6 +18,7 @@ namespace IdleBoardClient
     public static class ImageCacheManager
     {
         private static readonly object _lockObj = new object();
+        private static readonly SemaphoreSlim _syncSemaphore = new SemaphoreSlim(1, 1);
         public static readonly string CacheDirectory = InitializeCacheDirectory();
 
         private static string InitializeCacheDirectory()
@@ -184,15 +185,18 @@ namespace IdleBoardClient
         {
             if (activeFileNames == null) return false;
 
-            return await Task.Run(async () =>
+            await _syncSemaphore.WaitAsync(ct).ConfigureAwait(false);
+            try
             {
-                lock (_lockObj)
+                return await Task.Run(async () =>
                 {
-                    OnbellekKlasorunuOlustur();
-                }
+                    lock (_lockObj)
+                    {
+                        OnbellekKlasorunuOlustur();
+                    }
 
-                var activeSet = new HashSet<string>(activeFileNames, StringComparer.OrdinalIgnoreCase);
-                _aktifDosyalar = activeSet;
+                    var activeSet = new HashSet<string>(activeFileNames, StringComparer.OrdinalIgnoreCase);
+                    _aktifDosyalar = activeSet;
 
                 // 1. ADIM: Artık sunucuda seçili olmayan eski önbellek dosyalarını temizle (Purge)
                 // Boş liste geçici bir sunucu/okuma sorunu olabilir; çevrimdışı slayt için mevcut önbellek korunur
@@ -308,6 +312,11 @@ namespace IdleBoardClient
                 }
                 return true;
             }, ct).ConfigureAwait(false);
+            }
+            finally
+            {
+                _syncSemaphore.Release();
+            }
         }
 
         /// <summary>

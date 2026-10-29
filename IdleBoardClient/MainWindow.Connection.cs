@@ -491,6 +491,33 @@ namespace SseWpfApp
                                     }
                                     continue;
                                 }
+                                else if (tip == "active_images")
+                                {
+                                    if (root.TryGetProperty("activeImages", out var activeMsgImagesEl) && activeMsgImagesEl.ValueKind == JsonValueKind.Array)
+                                    {
+                                        var activeList = new List<string>();
+                                        foreach (var item in activeMsgImagesEl.EnumerateArray())
+                                        {
+                                            if (item.ValueKind == JsonValueKind.String)
+                                            {
+                                                string? name = item.GetString();
+                                                if (!string.IsNullOrWhiteSpace(name))
+                                                {
+                                                    activeList.Add(name);
+                                                }
+                                            }
+                                        }
+                                        if (activeList.Count > 0)
+                                        {
+                                            Logger.LogInfo($"[Önbellek] Sunucudan aktif galeri listesi güncellendi ({activeList.Count} dosya). Arka planda indirme başlatılıyor...");
+                                            if (_isInitialSyncCompleted)
+                                            {
+                                                _ = ImageCacheManager.SyncActiveImagesAsync(ServerUrl, activeList, null, cancellationToken);
+                                            }
+                                        }
+                                    }
+                                    continue;
+                                }
                                 else if (tip == "init")
                                 {
                                     if (root.TryGetProperty("isPaused", out var isPausedElement))
