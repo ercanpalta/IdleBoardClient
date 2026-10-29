@@ -77,6 +77,12 @@ namespace SseWpfApp
             timeoutTimer.Tick += async (s, e) =>
             {
                 timeoutTimer.Stop();
+                if (!_isInitialSyncCompleted && _isInitialSyncRunning)
+                {
+                    // Sunucuya bağlanıldı ve dosyalar indiriliyor; yavaş indirme çevrimdışı mod sayılmaz
+                    BaslatBaglantiZamanAsimiTakibi();
+                    return;
+                }
                 if (!_isInitialSyncCompleted)
                 {
                     // Bağlantı kurulamadıysa, ağda başka/yeni bir sunucu var mı diye bir kez daha tara
@@ -149,9 +155,10 @@ namespace SseWpfApp
 
             if (ct.IsCancellationRequested) return;
 
-            // Eksik dosya kaldıysa bayrak kurulmaz; sonraki sunucu mesajında eşitleme yeniden denenir
-            _isInitialSyncCompleted = syncOk;
-            if (!syncOk) Logger.LogInfo("[Eşitleme] Bazı dosyalar indirilemedi, sonraki mesajda yeniden denenecek.");
+            // Bazı dosyalar indirilemese bile yayın akışı başlatılır; eksik dosyalar her sunucu mesajında arka planda
+            // yeniden denenir ve gösterim anında talep üzerine indirilir. Aksi halde ekran tek görselde takılı kalır.
+            _isInitialSyncCompleted = true;
+            if (!syncOk) Logger.LogInfo("[Eşitleme] Bazı dosyalar indirilemedi, arka planda yeniden denenecek; yayın akışı başlatıldı.");
 
             // Eşitleme bittiğinde sunucu yayın akışında o an hangi görsel/video varsa doğrudan onu diskten ekrana getir
             bool gosterildi = false;
