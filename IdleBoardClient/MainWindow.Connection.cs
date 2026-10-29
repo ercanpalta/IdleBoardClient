@@ -440,7 +440,20 @@ namespace SseWpfApp
                                                 {
                                                     if (mediaVideo.Visibility == Visibility.Visible)
                                                     {
+                                                        // Video oynatılırken pinlendiyse veya çoktan sonuna ulaşıp durduysa:
+                                                        // Sona ulaştıysa baştan başlat, çalıyorsa oynatmaya devam et
+                                                        bool sonaUlasti = mediaVideo.NaturalDuration.HasTimeSpan &&
+                                                            mediaVideo.Position >= mediaVideo.NaturalDuration.TimeSpan - TimeSpan.FromMilliseconds(300);
+                                                        if (sonaUlasti)
+                                                        {
+                                                            mediaVideo.Stop();
+                                                            mediaVideo.Position = TimeSpan.Zero;
+                                                        }
                                                         mediaVideo.Play();
+                                                    }
+                                                    else
+                                                    {
+                                                        VideoyuGuncelle(pFile);
                                                     }
                                                 });
                                             }
@@ -476,6 +489,23 @@ namespace SseWpfApp
                                                     else ResmiGuncelleDosyadan(cFile, null);
                                                 });
                                             }
+                                        }
+                                        else if (_isStreamPinned && isVid && _isInitialSyncCompleted)
+                                        {
+                                            Dispatcher.Invoke(() =>
+                                            {
+                                                if (mediaVideo.Visibility == Visibility.Visible)
+                                                {
+                                                    bool sonaUlasti = mediaVideo.NaturalDuration.HasTimeSpan &&
+                                                        mediaVideo.Position >= mediaVideo.NaturalDuration.TimeSpan - TimeSpan.FromMilliseconds(300);
+                                                    if (sonaUlasti)
+                                                    {
+                                                        mediaVideo.Stop();
+                                                        mediaVideo.Position = TimeSpan.Zero;
+                                                        mediaVideo.Play();
+                                                    }
+                                                }
+                                            });
                                         }
                                     }
                                     continue;

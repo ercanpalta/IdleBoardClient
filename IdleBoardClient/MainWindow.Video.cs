@@ -92,7 +92,15 @@ namespace SseWpfApp
                     // Kaynağı sıfırdan atayıp MediaOpened beklemeden anında başa sar ve oynat (kesintisiz loop)
                     if (Equals(mediaVideo.Source, videoUri))
                     {
-                        mediaVideo.Position = TimeSpan.FromSeconds(_videoStartOffsetSec);
+                        mediaVideo.Stop();
+                        if (_videoStartOffsetSec > 0.05)
+                        {
+                            mediaVideo.Position = TimeSpan.FromSeconds(_videoStartOffsetSec);
+                        }
+                        else
+                        {
+                            mediaVideo.Position = TimeSpan.Zero;
+                        }
                         mediaVideo.Visibility = Visibility.Visible;
                         mediaVideo.Opacity = 1.0;
                         mediaVideo.Play();
@@ -172,11 +180,21 @@ namespace SseWpfApp
             {
                 if (_isStreamPinned)
                 {
-                    // Sabitlenmiş videoyu baştan döngüye al
+                    // Sabitlenmiş videoyu baştan döngüye al (sürekli tekrar tekrar oynat)
                     Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(() =>
                     {
-                        mediaVideo.Position = TimeSpan.Zero;
-                        mediaVideo.Play();
+                        try
+                        {
+                            if (!_isStreamPinned) return;
+                            mediaVideo.Stop();
+                            mediaVideo.Position = TimeSpan.Zero;
+                            mediaVideo.Play();
+                            Logger.LogInfo("[Pin] Sabitlenmiş video sona ulaştı, baştan döngüye alındı.");
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.LogError("[Pin] Sabitlenmiş video baştan başlatılırken hata:", ex);
+                        }
                     }));
                     return;
                 }
@@ -190,7 +208,10 @@ namespace SseWpfApp
                     }));
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Logger.LogError("[Video Oynatıcı] MediaEnded işlenirken hata:", ex);
+            }
         }
 
         private int _videoFailStreak = 0;
