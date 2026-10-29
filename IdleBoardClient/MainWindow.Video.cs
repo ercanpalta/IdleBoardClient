@@ -26,11 +26,45 @@ namespace SseWpfApp
     {
         private int _videoPlayVersion = 0;
         private int _videoOpenVersion = 0;
+        private static bool _mfChecked = false;
+        private static bool _mfAvailable = true;
+
+        public static bool IsMediaFoundationAvailable()
+        {
+            if (_mfChecked) return _mfAvailable;
+            try
+            {
+                IntPtr hMod = NativeMethods.LoadLibrary("mfplat.dll");
+                if (hMod != IntPtr.Zero)
+                {
+                    NativeMethods.FreeLibrary(hMod);
+                    _mfAvailable = true;
+                }
+                else
+                {
+                    _mfAvailable = false;
+                    Logger.LogError("[Windows Medya Uyarısı] mfplat.dll yüklenemedi. Windows N/KN sürümlerinde video oynatabilmek için Microsoft Media Feature Pack kurulmalıdır.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _mfAvailable = false;
+                Logger.LogError("[Windows Medya Uyarısı] Media Foundation denetim hatası", ex);
+            }
+            _mfChecked = true;
+            return _mfAvailable;
+        }
 
         private async void VideoyuGuncelle(string dosyaAdi, double startOffsetSec = 0)
         {
             try
             {
+                if (!IsMediaFoundationAvailable())
+                {
+                    Logger.LogInfo($"[Video Oynatıcı] Media Foundation bileşenleri eksik olduğu için video atlanıyor: {dosyaAdi}");
+                    return;
+                }
+
                 int version = Interlocked.Increment(ref _videoPlayVersion);
                 _videoStartOffsetSec = Math.Max(0, startOffsetSec);
 
