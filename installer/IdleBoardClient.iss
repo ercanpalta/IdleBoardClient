@@ -3,7 +3,7 @@
 ; =====================================================================
 
 #define MyAppName "IdleBoard Client"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.1.0"
 #define MyAppPublisher "IdleBoard"
 #define MyAppExeName "IdleBoardClient.exe"
 
@@ -28,7 +28,7 @@ UninstallDisplayIcon={app}\{#MyAppExeName}
 ; Windows Dosya ve Versiyon Bilgileri
 VersionInfoCompany=IdleBoard
 VersionInfoDescription=IdleBoard Client Kurulumu
-VersionInfoVersion=1.0.0.0
+VersionInfoVersion=1.1.0.0
 VersionInfoCopyright=Copyright 2026 Ercan Palta
 VersionInfoProductName=IdleBoard Client
 
